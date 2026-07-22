@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>焊點 · CIRCUIT FORGE</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='7' width='18' height='18' fill='none' stroke='%23ff5a3c' stroke-width='2.5' transform='rotate(45 16 16)'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ff5a3c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="9" y="9" width="22" height="22" fill="none" stroke="#ff5a3c" stroke-width="2.4" transform="rotate(45 20 20)"/>
+      <circle cx="20" cy="20" r="3" fill="#ff5a3c"/>
+      <path d="M20 20 L29 11" stroke="#ff5a3c" stroke-width="2"/>
+      <circle cx="29" cy="11" r="2" fill="#ff5a3c"/>
+    </svg>
+    <div class="brand-text">
+      <span class="brand-cjk">焊點</span>
+      <span class="brand-sub">CIRCUIT FORGE / 01</span>
+    </div>
+  </div>
+  <div class="engine-status"><span class="dot dot-green"></span>LOCAL ENGINE <b>READY</b></div>
+  <button id="exportBtn" class="export-btn" type="button">匯出專案 <span class="arrow">↓</span></button>
+</header>
+
+<main class="layout">
+
+  <!-- ═══════ 左欄：任務描述 ═══════ -->
+  <aside class="panel panel-left">
+    <div class="sec-label">01 / 任務描述</div>
+    <h1 class="headline">把想法<br><span class="accent">接上電</span><span class="dim">。</span></h1>
+    <p class="lede">用一句話描述 IoT 應用，系統會產生受控接線、3D 工作台與可編譯程式。</p>
+
+    <div class="req-label">IoT 運用需求</div>
+    <div class="req-box">
+      <textarea id="reqInput" spellcheck="false"></textarea>
+      <span id="reqTag" class="req-tag">REQ.001</span>
+    </div>
+
+    <div id="quickChips" class="chip-wrap quick-wrap"></div>
+    <div id="caseGroups"></div>
+
+    <button id="generateBtn" class="generate-btn" type="button">
+      <span>重新生成方案</span><span class="gen-icon">↗</span>
+    </button>
+
+    <div class="supported">
+      <div id="supportedCount" class="supported-count">SUPPORTED / 0</div>
+      <div id="supportedList" class="supported-list"></div>
+    </div>
+  </aside>
+
+  <!-- ═══════ 中欄：電路工作台 ═══════ -->
+  <section class="panel panel-center">
+    <div class="stage-head">
+      <div class="stage-head-text">
+        <div class="sec-label">02 / 電路工作台</div>
+        <h2 id="planTitle" class="plan-title">—</h2>
+      </div>
+      <div class="stage-tools">
+        <button id="pinLabelBtn" class="tool-btn on" type="button"><span class="lbl">PIN 標籤</span><span class="state">ON</span></button>
+        <button id="panBtn" class="tool-btn" type="button"><span class="lbl">上下移動</span><span class="state">OFF</span></button>
+        <button id="resetViewBtn" class="tool-btn" type="button"><span class="lbl">重設視角</span></button>
+      </div>
+    </div>
+
+    <div class="stage-sub">
+      <div class="stage-tags"><span class="dot dot-green"></span><span id="stageTags">BREADBOARD 3D</span></div>
+      <div class="legend">
+        <span class="legend-item"><i style="background:#e0452e"></i>電源</span>
+        <span class="legend-item"><i style="background:#4d7dff"></i>GND</span>
+        <span class="legend-item"><i style="background:#f0c33c"></i>訊號</span>
+      </div>
+    </div>
+
+    <div class="stage-canvas">
+      <canvas id="board3d"></canvas>
+      <div class="canvas-hint">拖曳旋轉 · 滾輪縮放</div>
+    </div>
+
+    <div class="stage-status">
+      <div class="stat"><div class="stat-k">BOARD</div><div id="statBoard" class="stat-v">—</div></div>
+      <div class="stat"><div class="stat-k">PARTS</div><div id="statParts" class="stat-v">00</div></div>
+      <div class="stat"><div class="stat-k">WIRES</div><div id="statWires" class="stat-v">00</div></div>
+      <div class="stat stat-done"><span class="done-box">✓</span><span id="statDone">接線已建立</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════ 右欄：CODE / WIRING / CHECKS / 說明 ═══════ -->
+  <aside class="panel panel-right">
+    <nav class="tabs">
+      <button class="tab active" data-tab="code" type="button">CODE</button>
+      <button class="tab" data-tab="wiring" type="button">WIRING</button>
+      <button class="tab" data-tab="checks" type="button">CHECKS</button>
+      <button class="tab" data-tab="docs" type="button">說明</button>
+    </nav>
+
+    <div id="tab-code" class="tab-panel">
+      <div id="fileTabs" class="file-tabs"></div>
+      <div class="code-head">
+        <span id="codeName" class="code-name">main.cpp</span>
+        <button id="copyBtn" class="copy-btn" type="button">複製</button>
+      </div>
+      <pre id="codeView" class="code-view"></pre>
+    </div>
+
+    <div id="tab-wiring" class="tab-panel" hidden>
+      <div class="panel-head">
+        <span class="panel-head-title">NET LIST</span>
+        <span id="netCount" class="panel-head-count">0 CONNECTIONS</span>
+      </div>
+      <div id="netList" class="net-list"></div>
+    </div>
+
+    <div id="tab-checks" class="tab-panel" hidden>
+      <div class="panel-head">
+        <span class="panel-head-title">DESIGN CHECKS</span>
+        <span id="checkCount" class="panel-head-count">0 RULES</span>
+      </div>
+      <div id="checkList" class="check-list"></div>
+    </div>
+
+    <div id="tab-docs" class="tab-panel" hidden>
+      <div class="panel-head">
+        <span class="panel-head-title">COMPONENT RATIONALE</span>
+        <span id="docCount" class="panel-head-count">0 PARTS</span>
+      </div>
+      <div class="docs-body">
+        <div class="docs-mode-row">
+          <button id="groqBtn" class="groq-btn" type="button">GROQ 動態分析</button>
+          <span id="docsMode" class="docs-mode">內建規則</span>
+        </div>
+        <div id="groqPanel" class="groq-panel" hidden>
+          <p>貼上 Groq API 金鑰即可啟用動態分析；金鑰只儲存在你瀏覽器的 localStorage，不會上傳到任何伺服器。</p>
+          <div class="groq-key-row">
+            <input id="groqKeyInput" type="password" placeholder="gsk_...">
+            <button id="groqSaveKey" type="button">儲存</button>
+            <button id="groqClearKey" type="button">清除</button>
+          </div>
+        </div>
+        <p id="docsIntro" class="docs-intro"></p>
+        <pre id="groqResult" class="groq-result" hidden></pre>
+        <div id="docParts"></div>
+      </div>
+    </div>
+  </aside>
+
+</main>
+
+<footer class="statusbar">
+  <div><span class="dot dot-green"></span>規則引擎已連線</div>
+  <div>CTRL / DRAG TO ORBIT</div>
+  <div>TAIPEI · LOCAL BUILD</div>
+</footer>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/codegen.js"></script>
+<script src="assets/js/board3d.js"></script>
+<script src="assets/js/zip.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
