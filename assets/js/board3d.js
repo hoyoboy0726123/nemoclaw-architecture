@@ -462,6 +462,10 @@ CF.Board3D = (function () {
   function buildScene(plan, opts) {
     const scene = newScene();
     buildBreadboard(scene);
+    // 分層標記：麵包板本體（底層）永遠先畫，板上物件另行排序。
+    // 鏡頭俯角有下限且所有元件都在板面之上，分層繪製可根治大面片
+    // 平均深度誤排導致「旋轉時元件被板面蓋掉」的問題。
+    scene.base = { p: scene.polys.length, s: scene.segs.length, d: scene.dots.length };
     const bm = buildBoardModel(scene, plan.board);
     scene.tags.push({ text: plan.board.name, p: bm.anchor });
 
@@ -575,21 +579,25 @@ CF.Board3D = (function () {
       }
     }
 
-    const items = [];
-    for (const q of scene.polys) {
+    const base = scene.base || { p: 0, s: 0, d: 0 };
+    const itemsBase = [];   // 麵包板本體：先畫
+    const itemsTop = [];    // 板上元件與接線：後畫
+    scene.polys.forEach((q, i) => {
       const pts = q.pts.map(proj);
       let d = 0; for (const p of pts) d += p[2];
-      items.push({ t: 0, d: d / pts.length, pts, fill: q.fill });
-    }
-    for (const s of scene.segs) {
+      (i < base.p ? itemsBase : itemsTop).push({ t: 0, d: d / pts.length, pts, fill: q.fill });
+    });
+    scene.segs.forEach((s, i) => {
       const a = proj(s.a), b = proj(s.b);
-      items.push({ t: 1, d: (a[2] + b[2]) / 2 - (s.thin ? 0.25 : 0.9), a, b, color: s.color, thin: s.thin });
-    }
-    for (const dt of scene.dots) {
+      (i < base.s ? itemsBase : itemsTop).push({ t: 1, d: (a[2] + b[2]) / 2 - (s.thin ? 0.25 : 0.9), a, b, color: s.color, thin: s.thin });
+    });
+    scene.dots.forEach((dt, i) => {
       const p = proj(dt.p);
-      items.push({ t: 2, d: p[2] - 0.45, p, r: dt.r, color: dt.color });
-    }
-    items.sort((m, n) => n.d - m.d);
+      (i < base.d ? itemsBase : itemsTop).push({ t: 2, d: p[2] - 0.45, p, r: dt.r, color: dt.color });
+    });
+    itemsBase.sort((m, n) => n.d - m.d);
+    itemsTop.sort((m, n) => n.d - m.d);
+    const items = itemsBase.concat(itemsTop);
 
     for (const it of items) {
       if (it.t === 0) {
