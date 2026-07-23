@@ -831,6 +831,7 @@ CF.Editor = (function () {
     st.parts.push(np);
 
     const assigned = [];
+    const unwired = [];
     if (def.cls !== 'PASSIVE') {
       // 確保板子電源軌已建立
       const uf0 = buildUF(false).uf;
@@ -859,6 +860,9 @@ CF.Editor = (function () {
             used.add(gpio);
             const bp = boardPinHole(gpio);
             if (bp) { addWire(p.hole, bp); assigned.push(`${p.name} → ${gpio}`); }
+            else unwired.push(p.name);
+          } else {
+            unwired.push(p.name);
           }
         }
       }
@@ -870,7 +874,9 @@ CF.Editor = (function () {
       }
     }
     changed();
-    return { ok: true, part: def.name, pins: assigned };
+    const r = { ok: true, part: def.name, pins: assigned };
+    if (unwired.length) r.warning = `以下訊號腳因板上 GPIO 不足而未接線：${unwired.join('、')}（ERC 會顯示錯誤，請移除部分元件或換板）`;
+    return r;
   }
 
   function agentRemovePart(partId) {
