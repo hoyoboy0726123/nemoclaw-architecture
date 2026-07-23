@@ -40,17 +40,28 @@
       <button id="helpBtn" class="help-btn" type="button">？ 使用說明</button>
     </div>
 
-    <div class="req-label">快速生成方案</div>
-    <select id="quickGen" class="quick-select">
-      <option value="" disabled selected>⚡ 選擇範例情境，立即生成…</option>
-    </select>
+    <div id="leftMcu">
+      <div class="req-label">快速生成方案</div>
+      <select id="quickGen" class="quick-select">
+        <option value="" disabled selected>⚡ 選擇範例情境，立即生成…</option>
+      </select>
 
-    <div id="quickChips" class="chip-wrap quick-wrap"></div>
-    <div id="caseGroups"></div>
+      <div id="quickChips" class="chip-wrap quick-wrap"></div>
+      <div id="caseGroups"></div>
 
-    <div class="supported">
-      <div id="supportedCount" class="supported-count">SUPPORTED / 0</div>
-      <div id="supportedList" class="supported-list"></div>
+      <div class="supported">
+        <div id="supportedCount" class="supported-count">SUPPORTED / 0</div>
+        <div id="supportedList" class="supported-list"></div>
+      </div>
+    </div>
+
+    <div id="leftInd" hidden>
+      <div class="req-label">經典迴路範例（一鍵載入）</div>
+      <div id="indPresets"></div>
+      <div class="supported">
+        <div class="supported-count">INDUSTRIAL PARTS</div>
+        <div class="supported-list">NFB · MC 電磁接觸器 · TH-RY 積熱電驛 · PB 按鈕 · PL 指示燈 · 三相馬達 · 3Φ220V ＋ 110V 控制迴路</div>
+      </div>
     </div>
   </aside>
 
