@@ -61,12 +61,16 @@ CF.Sim = (function () {
   function stop() {
     S.running = false;
     if (S.timer) { clearInterval(S.timer); S.timer = null; }
+    if (S.flashT) { clearTimeout(S.flashT); S.flashT = null; }
     setBeep(false);
   }
 
   /* ---------------- WebAudio 蜂鳴 ---------------- */
   function ensureAudio() {
-    if (S.audioCtx) return;
+    if (S.audioCtx) {
+      if (S.audioCtx.state === 'suspended') S.audioCtx.resume().catch(() => {});
+      return;
+    }
     try {
       S.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       S.osc = S.audioCtx.createOscillator();
@@ -97,7 +101,7 @@ CF.Sim = (function () {
       if (has('led')) S.ledUntil = S.t + 8000;
       if (has('buzzer')) S.beepUntil = S.t + 600;
       if (has('ws2812')) S.stripUntil = S.t + 8000;
-      if (has('camera')) { out.flash = true; pushLog('sys', 'camera', '[CAM] motion -> capture（模擬拍照）'); setTimeout(() => { out.flash = false; }, 350); }
+      if (has('camera')) { out.flash = true; pushLog('sys', 'camera', '[CAM] motion -> capture（模擬拍照）'); if (S.flashT) clearTimeout(S.flashT); S.flashT = setTimeout(() => { out.flash = false; S.flashT = null; }, 350); }
     }
     S.prevMotion = motion;
 
@@ -133,7 +137,7 @@ CF.Sim = (function () {
     /* 停車雷達——距離越近提示越急促 */
     if (has('buzzer') && has('hcsr04') && inp.dist > 0 && inp.dist < 60) {
       const interval = inp.dist * 8 + 40;
-      if (S.t - S.lastBeepAt > interval) { S.lastBeepAt = S.t; S.beepUntil = S.t + 60; }
+      if (S.t - S.lastBeepAt > interval) { S.lastBeepAt = S.t; S.beepUntil = S.t + 30; }   // 與產生韌體的 30ms 對齊
     }
 
     /* 輸出狀態 */

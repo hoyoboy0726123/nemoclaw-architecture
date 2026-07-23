@@ -15,9 +15,10 @@ CF.Store = (function () {
           const rq = indexedDB.open('nemoclaw-lab', 1);
           rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
           rq.onsuccess = () => resolve(rq.result);
-          rq.onerror = () => resolve(null);
-          rq.onblocked = () => resolve(null);
-        } catch (e) { resolve(null); }
+          // 暫時性失敗（blocked／error）不永久快取，讓下一次呼叫重試
+          rq.onerror = () => { dbPromise = null; resolve(null); };
+          rq.onblocked = () => { dbPromise = null; resolve(null); };
+        } catch (e) { dbPromise = null; resolve(null); }
       });
     }
     return dbPromise;

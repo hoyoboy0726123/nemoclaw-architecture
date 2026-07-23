@@ -280,10 +280,16 @@ CF.CONNS = {
 CF.RULES = {
   board: [
     { re: /esp32[\s-]?cam|esp[\s-]?cam|ai\s?thinker/i, board: 'esp32cam' },
+    { re: /esp[\s-]?32/i, board: 'esp32' },
     { re: /nano|arduino/i, board: 'nano' }
   ],
   parts: {
-    dht11:  /dht\s?11|dht\s?22|dht|溫溼|溫濕|(?<![壤水])溫度|(?<!壤)濕度|溼度|冷鏈/i,
+    // lookbehind 用 new RegExp 建構：舊 Safari（<16.4）不支援時降級為無 lookbehind 版本，
+    // 避免 regex 字面值造成整個檔案解析失敗、全站無法載入
+    dht11: (() => {
+      try { return new RegExp('dht\\s?11|dht\\s?22|dht|溫溼|溫濕|(?<![壤水])溫度|(?<!壤)濕度|溼度|冷鏈', 'i'); }
+      catch (e) { return /dht\s?11|dht\s?22|dht|溫溼|溫濕|溫度|濕度|溼度|冷鏈/i; }
+    })(),
     bme280: /bme\s?280|氣壓|大氣|舒適度/i,
     bh1750: /bh\s?1750|光照|照度|光線|光感/i,
     pir:    /hc-?sr501|pir|人體|人流|紅外線?感應|入侵/i,

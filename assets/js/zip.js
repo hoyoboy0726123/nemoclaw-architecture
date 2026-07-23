@@ -28,8 +28,9 @@ CF.makeZip = (function () {
     const local = [];
     const central = [];
     let offset = 0;
-    const dosTime = (12 << 11);                       // 12:00
-    const dosDate = ((2026 - 1980) << 9) | (7 << 5) | 22;
+    const now = new Date();
+    const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
 
     for (const e of entries) {
       const nameB = enc.encode(e.name);

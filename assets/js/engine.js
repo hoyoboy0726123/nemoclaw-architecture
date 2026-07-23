@@ -92,7 +92,7 @@ window.CF = window.CF || {};
     for (const part of parts) {
       for (const pin of part.pins) {
         if (pin.t === 'S') pin.assigned = takePin(dPool, board.prefer[pin.macro]);
-        else if (pin.t === 'A') pin.assigned = takePin(aPool.length ? aPool : dPool, board.prefer[pin.macro]);
+        else if (pin.t === 'A') pin.assigned = takePin(aPool, board.prefer[pin.macro]) || takePin(dPool, board.prefer[pin.macro]);
         else if (pin.t === 'I2C_SDA') pin.assigned = board.i2c.sda;
         else if (pin.t === 'I2C_SCL') pin.assigned = board.i2c.scl;
       }
@@ -174,7 +174,7 @@ window.CF = window.CF || {};
     const used = new Set(CF.usedSignalPins(plan));
     used.delete(net.boardPin);
     const opts = net.pool.filter(p => !used.has(p));
-    if (!opts.includes(net.boardPin)) opts.unshift(net.boardPin);
+    if (net.boardPin && !opts.includes(net.boardPin)) opts.unshift(net.boardPin);
     return opts.slice(0, 4);
   };
 
@@ -200,6 +200,13 @@ window.CF = window.CF || {};
       add(dup ? 'warn' : 'pass', 'I2C 匯流排', `SDA → ${board.i2c.sda}／SCL → ${board.i2c.scl}；位址 ${addrs}${dup ? '，發生衝突！' : '，無衝突。'}`);
     }
 
+    // 腳位耗盡：任何應指派卻拿不到腳的訊號 → 硬錯誤（擋通電與匯出誤導）
+    const unassigned = [];
+    for (const part of plan.parts) for (const pin of part.pins) {
+      if ((pin.t === 'S' || pin.t === 'A') && !pin.assigned) unassigned.push(`${part.def.titleName} ${pin.n}`);
+    }
+    if (unassigned.length) add('error', '腳位不足', `${plan.board.name} 的可用腳位不夠指派：${unassigned.join('、')}——請減少元件或改用腳位較多的開發板（ESP32）。`);
+
     const sig = [];
     for (const part of plan.parts) for (const pin of part.pins) if (pin.assigned) sig.push(pin.assigned);
     const dupPins = sig.filter((p, i) => sig.indexOf(p) !== i);
@@ -212,7 +219,11 @@ window.CF = window.CF || {};
       if (hit.length) add('info', '開機腳位提醒', `${hit.join('、')} 為 strapping pin，上電瞬間避免被外部電路強制拉高／拉低。`);
     }
 
-    if (board.camera) add('pass', '相機腳位保留', '影像匯流排與 PSRAM 腳位未被其他元件占用，GPIO 4 保留給板載閃光 LED。');
+    if (board.camera) {
+      add('pass', '相機腳位保留', '影像匯流排與 PSRAM 腳位未被其他元件占用，GPIO 4 保留給板載閃光 LED。');
+      const extras = plan.parts.filter(q => q.id !== 'pir' && q.id !== 'camera').map(q => q.def.titleName);
+      if (extras.length) add('warn', '相機韌體限制', `ESP32-CAM 韌體目前僅驅動 PIR 與相機；${extras.join('、')} 已接線但韌體不會操作它們。`);
+    }
 
     if (plan.parts.some(p => p.id === 'led')) add('info', 'LED 限流', '實體接線請於 LED 陽極串聯 220Ω 電阻，再接往 GPIO。');
 

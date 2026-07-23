@@ -328,6 +328,7 @@ CF.Editor = (function () {
 
   /* ---------------- 自動匯入目前方案 ---------------- */
   function importPlan(plan) {
+    if (!plan || !plan.spec) return;
     st.boardId = plan.spec.boardId;
     st.conn = plan.conn === 'tm' ? 'web' : plan.conn;
     st.parts = [];
@@ -659,7 +660,7 @@ CF.Editor = (function () {
       for (let t = 0; t <= 1; t += 0.05) {
         const px = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * cx + t * t * x2;
         const py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * cy + t * t * y2;
-        if (Math.hypot(px - x, py - y) < 7) return w;
+        if (Math.hypot(px - x, py - y) < 7 / st.vz) return w;
       }
     }
     return null;
@@ -689,8 +690,13 @@ CF.Editor = (function () {
 
   /* 縮放／平移 */
   function resetView() { st.vz = 1; st.vx = 0; st.vy = 0; render(); }
+  function closeValueEditor() {
+    const el = st.canvas && st.canvas.parentElement.querySelector('.pval-input');
+    if (el) el.blur();   // blur 會 commit 後移除
+  }
   function onWheel(e) {
     e.preventDefault();
+    closeValueEditor();
     const rect = st.canvas.getBoundingClientRect();
     const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
     const lx = (cx - st.vx) / st.vz, ly = (cy - st.vy) / st.vz;
@@ -704,6 +710,7 @@ CF.Editor = (function () {
     if (st.panDrag) {
       const dx = e.clientX - st.panDrag.x, dy = e.clientY - st.panDrag.y;
       if (st.panDrag.on || Math.hypot(dx, dy) > 4) {
+        if (!st.panDrag.on) closeValueEditor();
         st.panDrag.on = true;
         st.vx += e.clientX - st.panDrag.x;
         st.vy += e.clientY - st.panDrag.y;
@@ -782,6 +789,7 @@ CF.Editor = (function () {
     }
   }
   function onKey(e) {
+    if (!st.canvas || st.canvas.offsetParent === null) return;   // 編輯器未顯示時不攔鍵盤
     if ((e.key === 'Delete' || e.key === 'Backspace') && st.sel && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT') {
       if (st.sel.type === 'part') st.parts = st.parts.filter(q => q.uid !== st.sel.uid);
       else st.wires = st.wires.filter(q => q.uid !== st.sel.uid);
@@ -935,7 +943,8 @@ CF.Editor = (function () {
     st.boardId = d.boardId || 'esp32';
     st.conn = d.conn || 'mqtt';
     st.parts = (d.parts || []).filter(p => CF.PARTS[p.id]).map(p => ({ uid: st.uidSeq++, id: p.id, c0: p.c0, side: p.side, value: p.value, closed: p.closed }));
-    st.wires = (d.wires || []).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
+    const okHole = h => h && typeof h.c === 'number' && typeof h.r === 'string';
+    st.wires = (d.wires || []).filter(w => w && okHole(w.a) && okHole(w.b)).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
     st.sel = null; st.wireStart = null; st.placing = null;
     changed();
   }
@@ -968,7 +977,12 @@ CF.Editor = (function () {
       });
       canvas.addEventListener('pointercancel', onUp);
       canvas.addEventListener('wheel', onWheel, { passive: false });
-      canvas.addEventListener('pointerleave', () => { st.hover = null; st.panDrag = null; render(); });
+      canvas.addEventListener('pointerleave', () => {
+        st.hover = null;
+        st.panDrag = null;
+        if (st.drag) { const moved = st.drag.moved; st.drag = null; if (moved) changed(); }
+        render();
+      });
       window.addEventListener('keydown', onKey);
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
       resize();

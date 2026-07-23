@@ -5,7 +5,7 @@ window.CF = window.CF || {};
 (function () {
   const Q = '\\"'; // C 字串中的跳脫雙引號
 
-  const pinVal = pin => CF.pinNumber(pin || '0');
+  const pinVal = pin => pin ? CF.pinNumber(pin) : '-1 /* 腳位不足，未指派 */';
   const has = (plan, id) => plan.parts.some(p => p.id === id);
   const macroPin = (plan, macro) => {
     for (const part of plan.parts) for (const pin of part.pins) if (pin.macro === macro) return pin.assigned;

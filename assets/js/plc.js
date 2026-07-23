@@ -74,12 +74,15 @@ CF.Plc = (function () {
       const at = `第 ${i + 1} 階`;
       if (!Array.isArray(r.cols)) { errs.push(`${at}：缺 cols 陣列`); return; }
       if (r.cols.length > COLS) errs.push(`${at}：欄數上限 ${COLS}`);
-      for (const col of r.cols) for (const c of (col || [])) {
-        if (!c) continue;
+      let contactN = 0;
+      for (const col of r.cols) for (const c of (Array.isArray(col) ? col : [col])) {
+        if (!c || typeof c !== 'object') continue;
+        contactN++;
         if (c.t !== 'no' && c.t !== 'nc') errs.push(`${at}：接點型別需為 no（-| |-）或 nc（-|/|-）`);
         const e = checkAddr(c.addr, ['X', 'Y', 'M', 'T', 'C']);
         if (e) errs.push(`${at}：${e}`);
       }
+      if (!contactN && r.coil && r.coil.t === 'out') errs.push(`${at}：沒有任何接點——線圈恆得電（若非刻意請加入條件接點）`);
       const co = r.coil;
       if (!co || !co.addr) { errs.push(`${at}：缺線圈`); return; }
       if (!COIL_TYPES[co.t]) { errs.push(`${at}：線圈型別需為 out/ton/ctu/rst`); return; }
@@ -107,14 +110,14 @@ CF.Plc = (function () {
         cols: (r.cols || []).slice(0, COLS).map(col =>
           (Array.isArray(col) ? col : [col]).slice(0, 2).map(c =>
             c ? { t: c.t === 'nc' ? 'nc' : 'no', addr: String(c.addr).toUpperCase() } : null)),
-        coil: { t: r.coil.t, addr: String(r.coil.addr).toUpperCase(), preset: r.coil.preset }
+        coil: { t: r.coil.t, addr: String(r.coil.addr).toUpperCase(), preset: (v => (isFinite(v) && v > 0 && v <= 6000) ? v : undefined)(parseFloat(r.coil.preset)) }
       }))
     };
   }
   function setProgram(p) {
     const v = validateProgram(p);
-    // 雙線圈是可執行的警告，不阻擋載入；格式／位址錯誤才拒絕
-    const hard = v.errors.filter(e => !e.includes('雙線圈'));
+    // 雙線圈／恆得電是可執行的警告，不阻擋載入；格式／位址錯誤才拒絕
+    const hard = v.errors.filter(e => !e.includes('雙線圈') && !e.includes('恆得電'));
     if (hard.length) return { ok: false, errors: hard };
     prog = normalizeProgram(p);
     reset();
@@ -125,7 +128,15 @@ CF.Plc = (function () {
   function getProgram() { return JSON.parse(JSON.stringify(prog)); }
   function serialize() { return getProgram(); }
   function restoreProgram(p) {
-    if (p && Array.isArray(p.rungs)) { try { prog = normalizeProgram(p); reset(); } catch (e) { /* 壞資料忽略 */ } }
+    if (!p || !Array.isArray(p.rungs)) return;
+    try {
+      const norm = normalizeProgram(p);
+      const v = validateProgram(norm);
+      const hard = v.errors.filter(e => !e.includes('雙線圈') && !e.includes('恆得電'));
+      if (hard.length) { prog = { rungs: [] }; reset(); return; }   // 損毀存檔：丟棄，不執行不明程式
+      prog = norm;
+      reset();
+    } catch (e) { prog = { rungs: [] }; reset(); }
   }
 
   /* ================= ST 匯出（IEC 61131-3） ================= */
@@ -155,13 +166,21 @@ CF.Plc = (function () {
     [...used.T].sort().forEach(a => L.push(`  ${a} : TON;`));
     [...used.C].sort().forEach(a => L.push(`  ${a} : CTU;`));
     L.push('END_VAR', '');
+    // RST 併入對應 FB 的呼叫（TON 無 R 腳→併入 IN 條件；CTU 用標準 R 腳）
+    const rstFor = {};
+    prog.rungs.forEach(r => {
+      if (r.coil && r.coil.t === 'rst' && r.coil.addr) {
+        const e = rungExpr(r);
+        rstFor[r.coil.addr] = rstFor[r.coil.addr] ? `(${rstFor[r.coil.addr]}) OR (${e})` : e;
+      }
+    });
     prog.rungs.forEach((r, i) => {
       L.push(`(* Rung ${i + 1} *)`);
       const e = rungExpr(r), co = r.coil;
       if (co.t === 'out') L.push(`${co.addr} := ${e};`);
-      else if (co.t === 'ton') L.push(`${co.addr}(IN := ${e}, PT := T#${co.preset || 3}s);`);
-      else if (co.t === 'ctu') L.push(`${co.addr}(CU := ${e}, PV := ${co.preset || 3});`);
-      else if (co.t === 'rst') L.push(`IF ${e} THEN ${/^T/.test(co.addr) ? co.addr + '(IN := FALSE, PT := T#0s);' : co.addr + '(RESET := TRUE);'} END_IF;`);
+      else if (co.t === 'ton') L.push(`${co.addr}(IN := ${rstFor[co.addr] ? `(${e}) AND NOT (${rstFor[co.addr]})` : e}, PT := T#${co.preset || 3}s);`);
+      else if (co.t === 'ctu') L.push(`${co.addr}(CU := ${e}, R := ${rstFor[co.addr] || 'FALSE'}, PV := ${co.preset || 3});`);
+      else if (co.t === 'rst') L.push(`(* RST ${co.addr}：復歸條件已併入 ${co.addr} 的 FB 呼叫 *)`);
       L.push('');
     });
     L.push('END_PROGRAM');
@@ -194,7 +213,8 @@ CF.Plc = (function () {
     modal.addEventListener('click', e => {
       if (e.target === modal || e.target.closest('[data-close]')) { closeEditor(); return; }
       if (e.target.closest('[data-add]')) {
-        prog.rungs.push({ cols: [[null, null], [null, null], [null, null], [null, null]], coil: { t: 'out', addr: nextFreeCoil() } });
+        // 預設線圈用內部繼電器 M：空階恆通電，若預設 Y 會在模擬中直接驅動外部負載
+        prog.rungs.push({ cols: [[null, null], [null, null], [null, null], [null, null]], coil: { t: 'out', addr: nextFreeM() } });
         commit();
         return;
       }
@@ -214,9 +234,9 @@ CF.Plc = (function () {
     });
   }
 
-  function nextFreeCoil() {
-    const usedY = new Set(prog.rungs.filter(r => r.coil && r.coil.t === 'out').map(r => r.coil.addr));
-    for (let i = 0; i < LIM.Y; i++) if (!usedY.has('Y' + i)) return 'Y' + i;
+  function nextFreeM() {
+    const used = new Set(prog.rungs.filter(r => r.coil && r.coil.t === 'out').map(r => r.coil.addr));
+    for (let i = 0; i < LIM.M; i++) if (!used.has('M' + i)) return 'M' + i;
     return 'M0';
   }
 
@@ -227,12 +247,13 @@ CF.Plc = (function () {
     if (onChange) onChange();
   }
 
-  const cellTxt = c => !c ? '─' : (c.t === 'nc' ? `─|/|─<b>${c.addr}</b>` : `─| |─<b>${c.addr}</b>`);
+  const escH = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const cellTxt = c => !c ? '─' : (c.t === 'nc' ? `─|/|─<b>${escH(c.addr)}</b>` : `─| |─<b>${escH(c.addr)}</b>`);
   const coilTxt = co => {
-    if (co.t === 'out') return `─( )─<b>${co.addr}</b>`;
-    if (co.t === 'ton') return `TON <b>${co.addr}</b> ${co.preset || 3}s`;
-    if (co.t === 'ctu') return `CTU <b>${co.addr}</b> ×${co.preset || 3}`;
-    return `RST <b>${co.addr}</b>`;
+    if (co.t === 'out') return `─( )─<b>${escH(co.addr)}</b>`;
+    if (co.t === 'ton') return `TON <b>${escH(co.addr)}</b> ${escH(co.preset || 3)}s`;
+    if (co.t === 'ctu') return `CTU <b>${escH(co.addr)}</b> ×${escH(co.preset || 3)}`;
+    return `RST <b>${escH(co.addr)}</b>`;
   };
 
   function renderRungs() {
@@ -296,7 +317,7 @@ CF.Plc = (function () {
         <button type="button" data-t="nc" class="${cur && cur.t === 'nc' ? 'sel' : ''}">─|/|─ 常閉</button>
         <button type="button" data-t="del">清除</button>
       </div>
-      <div class="lp-row"><input type="text" placeholder="位址 X0/Y0/M0/T0/C0" value="${cur ? cur.addr : ''}" maxlength="2"><button type="button" data-ok>套用</button></div>
+      <div class="lp-row"><input type="text" placeholder="位址 X0/Y0/M0/T0/C0" value="${cur ? escH(cur.addr) : ''}" maxlength="2"><button type="button" data-ok>套用</button></div>
       <div class="lp-err"></div>`;
     placePopover(cellEl);
     const input = popover.querySelector('input');
@@ -334,7 +355,7 @@ CF.Plc = (function () {
         ${Object.entries(COIL_TYPES).map(([k, lbl]) => `<button type="button" data-t="${k}" class="${cur.t === k ? 'sel' : ''}">${lbl}</button>`).join('')}
       </div>
       <div class="lp-row">
-        <input type="text" data-addr placeholder="位址" value="${cur.addr || ''}" maxlength="2">
+        <input type="text" data-addr placeholder="位址" value="${escH(cur.addr || '')}" maxlength="2">
         <input type="number" data-preset placeholder="秒/次" value="${cur.preset || ''}" min="1" max="600" step="0.5">
         <button type="button" data-ok>套用</button>
       </div>

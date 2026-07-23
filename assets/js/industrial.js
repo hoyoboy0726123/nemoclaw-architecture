@@ -683,10 +683,30 @@ CF.Ind = (function () {
   /* 需互鎖的 MC 判定：只閉合某「一對」MC（其餘 MC 主接點開路）就會相間短路
    * ＝這對 MC 不可同時投入（正逆轉換相、Y-Δ 星角）。輸出併聯與經馬達端子的
    * 短路路徑都涵蓋；順序啟動等各帶各負載的組合不會誤判。 */
-  function shortedPhases(uf) {
+  /* 各電源三相組（假設路徑用）：市電＋發電機＋高壓進線＋各變壓器二次側 */
+  function trioNetsOf(uf) {
     const src = sourcePart();
-    const r = uf.find(tid(src.uid, 'R')), s = uf.find(tid(src.uid, 'S')), t = uf.find(tid(src.uid, 'T'));
-    return r === s || s === t || r === t;
+    const list = [['R', 'S', 'T'].map(t => uf.find(tid(src.uid, t)))];
+    for (const g of st.parts) {
+      const d2 = defOf(g);
+      if (d2.gen) list.push(['GR', 'GS', 'GT'].map(t => uf.find(tid(g.uid, t))));
+      if (d2.hvsrc) list.push(d2.srcTerms.map(t => uf.find(tid(g.uid, t))));
+      if (d2.xfmr) list.push(['2', '4', '6'].map(t => uf.find(tid(g.uid, t))));
+    }
+    return list;
+  }
+  /* 控制電源節點集合（假設路徑用）：POWER C1/C2 ＋ 各 TX/PT 二次側 */
+  function ctrlNodeSet(uf) {
+    const src = sourcePart();
+    const set = new Set([uf.find(tid(src.uid, 'C1')), uf.find(tid(src.uid, 'C2'))]);
+    for (const q of st.parts) {
+      if (defOf(q).tx) { set.add(uf.find(tid(q.uid, 'S1'))); set.add(uf.find(tid(q.uid, 'S2'))); }
+    }
+    return set;
+  }
+  function shortedPhases(uf) {
+    // 任一電源三相組內部被併網＝相間短路（涵蓋變壓器二次側母線上的正逆轉）
+    return trioNetsOf(uf).some(([a, b, c]) => a === b || b === c || a === c);
   }
   function mcPairShorts(A, B, mcs) {
     const skip = new Set(mcs.filter(m => m !== A && m !== B).map(m => m.uid));
@@ -997,9 +1017,10 @@ CF.Ind = (function () {
     const plcP = st.parts.find(p => defOf(p).plc);
     if (plcP) {
       const nL = ufAll.find(tid(plcP.uid, 'L')), nN = ufAll.find(tid(plcP.uid, 'N'));
-      const powered = nL !== nN && (nL === nC1 || nL === nC2) && (nN === nC1 || nN === nC2);
-      if (powered) pass('PLC 電源', 'L/N 已接上 110V 控制電源。');
-      else warn('PLC 未供電', 'L/N 沒有分別接到 C1 與 C2——通電後 PLC 不會運作，輸出全部 OFF。');
+      const cSet = ctrlNodeSet(ufAll);
+      const powered = nL !== nN && cSet.has(nL) && cSet.has(nN);
+      if (powered) pass('PLC 電源', 'L/N 已接上 110V 控制電源（C1/C2 或 TX/PT 二次側）。');
+      else warn('PLC 未供電', 'L/N 沒有分別接到控制電源兩端（C1/C2 或 TX 的 S1/S2）——通電後 PLC 不會運作。');
       if (window.CF && CF.Plc) {
         const v = CF.Plc.validateAll();
         if (!v.rungs) info('梯形圖空白', '雙擊 PLC（或按工具列「梯形圖」）撰寫程式；空程式時輸出全部 OFF。');
@@ -1083,31 +1104,35 @@ CF.Ind = (function () {
       if (gn.some(n => [nR, nS, nT].includes(n))) err('雙電源併聯', `${labelOf(g.uid, '').trim()} 的輸出與市電相位網直接相連——發電機起動時將與市電併聯短路。必須經 ATS 切換。`);
     }
     if (atsList.length) {
-      const nLive = ['2', '4', '6'].map(t => ufAll.find(tid(atsList[0].uid, t)));
-      const nOk = new Set(nLive).size === 3 && trioSources(ufAll).some(tr => nLive.every(n => tr.nets.includes(n)));
-      if (nOk) pass('常用電源路徑', 'ATS 常用側（1/3/5）接自常用電源（市電或變壓器二次側），輸出三相齊備。');
-      else warn('ATS 常用側未接妥', 'ATS 的 1/3/5 沒有從常用電源接入三相。');
-      if (genList.length) {
-        const ufE = buildUF('all', null, { atsE: true });
-        const eOut = ['2', '4', '6'].map(t => ufE.find(tid(atsList[0].uid, t)));
-        const eOk = genList.some(g => {
-          const gn = ['GR', 'GS', 'GT'].map(t => ufE.find(tid(g.uid, t)));
-          return eOut.every(n => gn.includes(n)) && new Set(eOut).size === 3;
-        });
-        if (eOk) pass('備用電源路徑', 'ATS 備用側（7/9/11）接自發電機，停電時可切換供電。');
-        else warn('ATS 備用側未接妥', 'ATS 的 7/9/11 沒有接到發電機 GR/GS/GT——停電時無法切換。');
-      } else info('無備用電源', '有 ATS 但沒有發電機；加入 GEN 並接到 7/9/11 才能演練停電切換。');
+      const ufE = genList.length ? buildUF('all', null, { atsE: true }) : null;
+      for (const at of atsList) {
+        const la = labelOf(at.uid, '').trim();
+        const nLive = ['2', '4', '6'].map(t => ufAll.find(tid(at.uid, t)));
+        const nOk = new Set(nLive).size === 3 && trioSources(ufAll).some(tr => nLive.every(n => tr.nets.includes(n)));
+        if (nOk) pass('常用電源路徑', `${la} 常用側（1/3/5）接自常用電源，輸出三相齊備。`);
+        else warn('ATS 常用側未接妥', `${la} 的 1/3/5 沒有從常用電源接入三相。`);
+        if (ufE) {
+          const eOut = ['2', '4', '6'].map(t => ufE.find(tid(at.uid, t)));
+          const eOk = genList.some(g => {
+            const gn = ['GR', 'GS', 'GT'].map(t => ufE.find(tid(g.uid, t)));
+            return eOut.every(n => gn.includes(n)) && new Set(eOut).size === 3;
+          });
+          if (eOk) pass('備用電源路徑', `${la} 備用側（7/9/11）接自發電機，停電時可切換供電。`);
+          else warn('ATS 備用側未接妥', `${la} 的 7/9/11 沒有接到發電機 GR/GS/GT——停電時無法切換。`);
+        }
+      }
+      if (!genList.length) info('無備用電源', '有 ATS 但沒有發電機；加入 GEN 並接到 7/9/11 才能演練停電切換。');
     } else if (genList.length) warn('發電機未經 ATS', '有發電機但沒有 ATS——無法安全切換雙電源。');
 
     // 電氣互鎖：同時投入會相間短路的 MC 配對（正逆轉、Y-Δ），線圈必須互經對方 21-22 b 接點
     const mcs = st.parts.filter(p => p.id === 'mc');
     if (mcs.length >= 2) {
       const coilReach = uf2 => {
-        // 檢查每顆 MC 線圈在該假設下是否仍可達控制電源
-        const c1 = uf2.find(tid(src.uid, 'C1')), c2 = uf2.find(tid(src.uid, 'C2'));
+        // 檢查每顆 MC 線圈在該假設下是否仍可達控制電源（含 TX/PT 二次側）
+        const cSet2 = ctrlNodeSet(uf2);
         return p => {
           const a = uf2.find(tid(p.uid, 'A1')), b = uf2.find(tid(p.uid, 'A2'));
-          return (a === c1 || a === c2) && (b === c1 || b === c2);
+          return cSet2.has(a) && cSet2.has(b) && a !== b;
         };
       };
       for (let i = 0; i < mcs.length; i++) {
@@ -1133,6 +1158,7 @@ CF.Ind = (function () {
 
   /* ================= 模擬 ================= */
   function simStart() {
+    if (st.running) return { ok: false, msg: '模擬已在執行中' };
     if (st.parts.some(p => defOf(p).tester)) {
       return { ok: false, msg: '盤上有試驗器——試驗接線狀態不可通電（安全規定）。試驗完成後請清空或載入其他範例再通電。' };
     }
@@ -1163,13 +1189,16 @@ CF.Ind = (function () {
       p.powered = false; p.di = null; p.mode = null;
       p.running = false; p.startAt = null; p.stopAt = null;   // 發電機
       p.pos = null; p.reading = 0; p.otAt = null; p.scEn = false; p._txLive = false;
+      p.ryAcc = 0; p.ryFired = false;
       if (defOf(p).outage) p.outage = false;                  // 市電復歸
     }
     render();
     if (st.onSim) st.onSim();
   }
   function toggleOutage(uid) {
-    const p = (uid && byUid(uid)) || st.parts.find(x => defOf(x).outage && (x.id === 'hvin' || !st.parts.some(q => q.id === 'hvin')));
+    const p = (uid && byUid(uid))
+      || st.parts.find(x => defOf(x).hvsrc && defOf(x).outage)
+      || st.parts.find(x => defOf(x).outage);
     if (!p || !defOf(p).outage) return { ok: false, error: '盤上沒有電源' };
     const name = defOf(p).hvsrc ? '台電高壓' : '市電';
     p.outage = !p.outage;
@@ -1205,6 +1234,7 @@ CF.Ind = (function () {
   }
 
   function tick() {
+    if (!st.running) return;
     const now = Date.now();
     const src = sourcePart();
     // TR 計時（依上一掃描的線圈狀態累計）
@@ -1303,12 +1333,14 @@ CF.Ind = (function () {
       const amps = (r.hvAmps && r.hvAmps[ct.uid]) || 0;
       const pickup = p.pickup !== undefined ? p.pickup : defOf(p).param.def;
       if (amps > pickup) {
+        if (p.ryFired) continue;   // 已出口：電流未消失前不重複動作（防 log 洗版）
         const M = amps / pickup;
         const tTrip = Math.min(30, Math.max(0.15, 0.2 * 3 / (M - 1)));
         if (!p.ryAcc) pushLog(`${labelOf(p.uid, '').trim()} 啟動！I=${amps.toFixed(2)}A > 整定 ${pickup}A（預計 ${tTrip.toFixed(1)}s 後跳脫）`);
         p.ryAcc = (p.ryAcc || 0) + 0.12;
         if (p.ryAcc >= tTrip) {
           p.ryAcc = 0;
+          p.ryFired = true;
           const tNet = r.uf.find(tid(p.uid, 'T1')), tNet2 = r.uf.find(tid(p.uid, 'T2'));
           const vcbT = st.parts.find(q => defOf(q).breaker &&
             [r.uf.find(tid(q.uid, 'TC1')), r.uf.find(tid(q.uid, 'TC2'))].some(n => n === tNet || n === tNet2));
@@ -1318,7 +1350,7 @@ CF.Ind = (function () {
             pushLog(`${labelOf(p.uid, '').trim()} 出口動作 → ${labelOf(vcbT.uid, '').trim()} 跳脫！⚡（過電流保護）——復歸後需重新投入`);
           } else pushLog(`${labelOf(p.uid, '').trim()} 出口動作，但 T1/T2 沒接到任何 VCB 的跳脫線圈——無法跳脫！`);
         }
-      } else p.ryAcc = 0;
+      } else { p.ryAcc = 0; p.ryFired = false; }
     }
     // ATS 切換紀錄
     for (const p of st.parts) {
@@ -1949,7 +1981,11 @@ CF.Ind = (function () {
     const lbl = labelOf(p.uid, '').trim();
     if (p.fault) return { ok: false, error: `${lbl} 已弧光損壞，無法操作——請重新載入範例（實務上要整組更換）` };
     if (d.breaker && p.tripped) return { ok: false, error: `${lbl} 處於跳脫狀態，請先「復歸」再投入` };
-    const amps = (st.running && st.live && st.live.hvAmps && st.live.hvAmps[p.uid]) || 0;
+    let amps = 0;
+    if (st.running) {
+      const live = solve(st.coilPrev);   // 即時求解，不用 120ms 前的快照
+      amps = (live.hvAmps && live.hvAmps[p.uid]) || 0;
+    }
     if (p.on && amps > 0.004) {
       if (d.dsw) {
         p.fault = true;
@@ -2011,6 +2047,8 @@ CF.Ind = (function () {
     const pv = k => inst[k] !== undefined ? inst[k] : defOf(inst).param.def;
     inst.testing = true;
     inst.testMsg = '試驗中⋯';
+    const gen0 = st.gen || 0;
+    const stale = () => (st.gen || 0) !== gen0 || !byUid(uid);
     try {
       if (kind === 'meg') {
         const tgt = probeTarget(uid, 'L');
@@ -2020,6 +2058,7 @@ CF.Ind = (function () {
         const tl = labelOf(tgt.uid, '').trim();
         testLog(`${lbl}：對 ${tl} 施加 DC ${pv('volt')}V 絕緣測試⋯`);
         await delay(1200);
+        if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
         const ins = insulOf(tgt) * (0.9 + Math.random() * 0.2);
         const need = insulNeed(tgt);
         const okV = ins >= need;
@@ -2039,6 +2078,7 @@ CF.Ind = (function () {
         testLog(`${lbl}：${tl} AC 耐壓試驗，升壓至 ${kv}kV⋯`);
         for (const pct of [25, 50, 75]) {
           await delay(600);
+          if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
           if (tgt.defect === 'insulation' && pct >= 50) {
             inst.testMsg = `${(kv * pct / 100).toFixed(1)}kV 閃絡 ✕`;
             testLog(`⚡ ${lbl}：升壓至 ${(kv * pct / 100).toFixed(1)}kV 時 ${tl} 絕緣崩潰閃絡！——判定【不合格】✕ 該設備不得投入運轉。`);
@@ -2047,6 +2087,7 @@ CF.Ind = (function () {
           testLog(`${lbl}：${(kv * pct / 100).toFixed(1)}kV⋯`);
         }
         await delay(800);
+        if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
         const leak = +(kv / insulOf(tgt) * 8).toFixed(2);
         inst.testMsg = `${kv}kV 保持 ✓（${leak}mA）`;
         testLog(`${lbl}：${kv}kV 保持 60 秒（模擬），洩漏電流 ${leak}mA——判定【合格】✓`);
@@ -2064,6 +2105,7 @@ CF.Ind = (function () {
         const nameplate = tgt.ratio !== undefined ? tgt.ratio : defOf(tgt).param.def;
         testLog(`${lbl}：對 ${tl} 一次側注入 ${inj}A⋯`);
         await delay(1200);
+        if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
         if (tgt.defect === 'polarity') {
           inst.testMsg = '極性【反】✕';
           testLog(`${lbl}：${tl} 二次輸出相位相反——【極性接反】✕ 保護電驛會誤動作，必須改正 k/l。`);
@@ -2090,6 +2132,7 @@ CF.Ind = (function () {
         const pickup = ryP.pickup !== undefined ? ryP.pickup : defOf(ryP).param.def;
         testLog(`${lbl}：對 ${tl} 注入 ${inj}A（一次換算，整定 ${pickup}A）⋯`);
         await delay(600);
+        if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
         if (inj <= pickup) {
           inst.testMsg = '未動作（<整定）✓';
           testLog(`${lbl}：注入 ${inj}A ≤ 始動值 ${pickup}A，電驛不動作——低於整定不動作屬正常 ✓（要驗曲線請注入更大電流）`);
@@ -2100,6 +2143,7 @@ CF.Ind = (function () {
         const factor = ryP.defect === 'slow' ? 1.6 : (0.96 + Math.random() * 0.08);
         const measured = +(expected * factor).toFixed(2);
         await delay(Math.min(2500, expected * 1000));
+        if (stale()) return { ok: false, error: '盤面已變更，試驗中止' };
         // 出口有接斷路器就真的跳給你看
         const tNet = [ufW.find(tid(ryP.uid, 'T1')), ufW.find(tid(ryP.uid, 'T2'))];
         const brk = st.parts.find(q => defOf(q).breaker &&
@@ -2115,6 +2159,7 @@ CF.Ind = (function () {
       return { ok: false, error: '未知試驗器' };
     } finally {
       inst.testing = false;
+      if (inst.testMsg === '試驗中⋯') inst.testMsg = 'READY';
       render();
       if (st.onSim) st.onSim();
     }
@@ -2158,7 +2203,8 @@ CF.Ind = (function () {
     let x = 30;
     for (const p of st.parts) {
       const pd = defOf(p);
-      if (pd.row === row) x = Math.max(x, p.x + pd.w + 42);
+      const pRow = p._row !== undefined ? p._row : pd.row;
+      if (pRow === row) x = Math.max(x, p.x + pd.w + 42);
     }
     if (x + d.w > LW - 20) return { ok: false, error: '此列已無空間' };
     const np = { uid: st.uidSeq++, id, x, y: ROW_Y[row] - (row === 0 ? 0 : d.h - 46) };
@@ -2237,6 +2283,8 @@ CF.Ind = (function () {
     st.parts = [];
     st.wires = [];
     st.uidSeq = 1;
+    st.gen = (st.gen || 0) + 1;   // 世代序號：讓進行中的 runTest 失效
+    if (window.CF && CF.Plc && !pid.startsWith('plc_')) CF.Plc.setProgram({ rungs: [] });
     ensureSource();
     const S = st.parts[0].uid;
     const A = id => addPartSilent(id);
@@ -2913,6 +2961,7 @@ CF.Ind = (function () {
     return {
       parts: st.parts.map(p => {
         const o = { uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped };
+        if (p.fault) o.fault = true;
         if (p.defect) o.defect = p.defect;
         if (p._row !== undefined) o._row = p._row;
         for (const k of PARAM_KEYS) if (p[k] !== undefined) o[k] = p[k];
@@ -2927,15 +2976,27 @@ CF.Ind = (function () {
     if (!d || !d.parts) return;
     st.parts = d.parts.filter(p => DEFS[p.id]).map(p => {
       const o = { uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped };
-      if (p.defect) o.defect = p.defect;
+      if (p.fault) o.fault = true;
+      if (typeof p.defect === 'string' && p.defect.length < 20) o.defect = p.defect;
       if (p._row !== undefined) o._row = p._row;
-      for (const k of PARAM_KEYS) if (p[k] !== undefined) o[k] = p[k];
+      // 參數逐鍵消毒：非數值丟棄；元件自身的可調參數再以 min/max 夾取
+      const pr = DEFS[p.id].param;
+      for (const k of PARAM_KEYS) {
+        if (p[k] === undefined) continue;
+        const v = parseFloat(p[k]);
+        if (!isFinite(v)) continue;
+        o[k] = (pr && pr.key === k) ? Math.min(pr.max, Math.max(pr.min, v)) : v;
+      }
       return o;
     });
     const have = new Set(st.parts.map(p => p.uid));
     st.wires = (d.wires || []).filter(w => have.has(w.a.uid) && have.has(w.b.uid)).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
     st.uidSeq = Math.max(d.uidSeq || 1, st.uidSeq);
-    if (d.program && window.CF && CF.Plc) CF.Plc.restoreProgram(d.program);
+    st.gen = (st.gen || 0) + 1;
+    if (window.CF && CF.Plc) {
+      if (d.program) CF.Plc.restoreProgram(d.program);
+      else CF.Plc.setProgram({ rungs: [] });
+    }
     changed();
   }
 
@@ -2987,7 +3048,7 @@ CF.Ind = (function () {
     PRESETS, loadPreset,
     addPart, loadExample, restore, serialize, genFiles, resize,
     setTool(t) { st.tool = t; st.wireStart = null; render(); },
-    clear() { st.parts = []; st.wires = []; st.uidSeq = 1; ensureSource(); changed(); },
+    clear() { st.parts = []; st.wires = []; st.uidSeq = 1; st.gen = (st.gen || 0) + 1; if (window.CF && CF.Plc) CF.Plc.setProgram({ rungs: [] }); ensureSource(); changed(); },
     getPlan() { return st.plan || derive(); },
     /* 模擬控制（模擬面板用） */
     simStart, simStop,
