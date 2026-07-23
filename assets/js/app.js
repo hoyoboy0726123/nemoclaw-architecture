@@ -79,23 +79,46 @@
     $('#supportedList').textContent = CF.SUPPORTED.join(' · ');
     $('#supportedCount').textContent = `SUPPORTED / ${CF.SUPPORTED.length}`;
 
-    // 編輯器元件盤
+    // 編輯器元件盤（分類摺疊）
+    const PALETTE_GROUPS = [
+      { t: '感測', ids: ['dht11', 'ds18b20', 'bme280', 'bh1750', 'mpu6050', 'mq2', 'pir', 'hcsr04', 'soil'] },
+      { t: '顯示', ids: ['oled', 'lcd1602'] },
+      { t: '輸入', ids: ['button', 'encoder', 'pot'] },
+      { t: '輸出／動作', ids: ['led', 'ws2812', 'buzzer', 'servo', 'relay', 'pump'] },
+      { t: '被動元件', ids: ['resistor'] }
+    ];
     const pal = $('#partPalette');
-    for (const id of CF.PART_ORDER) {
-      if (id === 'camera') continue;
-      const def = CF.PARTS[id];
-      const fp = CF.FOOTPRINTS[id];
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'part-chip';
-      b.dataset.part = id;
-      b.innerHTML = `<i style="background:${fp.color}"></i>${def.titleName}`;
-      b.addEventListener('click', () => {
-        CF.Editor.addPart(id);
-        pal.querySelectorAll('.part-chip').forEach(x => x.classList.toggle('placing', x === b));
-        setTimeout(() => b.classList.remove('placing'), 2500);
+    for (const group of PALETTE_GROUPS) {
+      const g = document.createElement('div');
+      g.className = 'pal-group';
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'pal-head';
+      head.innerHTML = `<span class="tri">▾</span>${group.t}`;
+      const row = document.createElement('div');
+      row.className = 'pal-row';
+      head.addEventListener('click', () => {
+        g.classList.toggle('collapsed');
+        head.querySelector('.tri').textContent = g.classList.contains('collapsed') ? '▸' : '▾';
       });
-      pal.appendChild(b);
+      for (const id of group.ids) {
+        const def = CF.PARTS[id];
+        const fp = CF.FOOTPRINTS[id];
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'part-chip';
+        b.dataset.part = id;
+        b.innerHTML = `<i style="background:${fp.color}"></i>${def.titleName}`;
+        b.addEventListener('click', () => {
+          CF.Editor.addPart(id);
+          pal.querySelectorAll('.part-chip').forEach(x => x.classList.toggle('placing', x === b));
+          setTimeout(() => b.classList.remove('placing'), 2500);
+        });
+        row.appendChild(b);
+      }
+      g.appendChild(head);
+      g.appendChild(row);
+      pal.appendChild(g);
     }
   }
 
@@ -340,6 +363,23 @@
         b.addEventListener('pointerleave', up);
         evRow.appendChild(b);
       }
+      if (has('encoder')) {
+        const mk = (txt, fn) => {
+          const b = document.createElement('button');
+          b.className = 'sim-ev'; b.type = 'button';
+          b.textContent = txt;
+          b.addEventListener('click', fn);
+          return b;
+        };
+        evRow.appendChild(mk('⟲ 逆轉', () => CF.Sim.encoderDelta(-3)));
+        evRow.appendChild(mk('⟳ 順轉', () => CF.Sim.encoderDelta(3)));
+        evRow.appendChild(mk('◉ 按下歸零', () => CF.Sim.encoderPress()));
+        const posEl = document.createElement('span');
+        posEl.className = 'sim-enc-pos';
+        posEl.textContent = 'POS 0';
+        evRow.appendChild(posEl);
+        refs.encPos = posEl;
+      }
       if (evRow.children.length) host.appendChild(evRow);
     }
 
@@ -364,6 +404,17 @@
     if (has('relay')) addOut('relay', 'RELAY', '<div class="sim-chipval" data-el>OFF</div>');
     if (has('servo')) addOut('servo', 'SERVO', '<div class="sim-servo"><div class="sim-needle" data-el></div></div><div class="sim-chipval" data-deg>0°</div>');
     if (has('camera')) addOut('flash', 'FLASH', '<div class="sim-led" data-el style="border-radius:6px"></div>');
+    if (has('pump')) addOut('pump', 'PUMP 水泵', '<div class="sim-pump" data-el>💧</div>');
+    if (has('ws2812')) {
+      addOut('strip', 'WS2812 燈條', '<div class="sim-strip" data-el>' + '<i></i>'.repeat(6) + '</div>');
+    }
+    if (has('lcd1602')) {
+      const el = document.createElement('div');
+      el.className = 'sim-out';
+      el.innerHTML = '<div class="k">LCD1602</div><div class="sim-lcd" data-el><div>— POWER OFF —</div></div>';
+      outs.appendChild(el);
+      refs.outs.lcd = el;
+    }
     if (has('oled')) {
       const el = document.createElement('div');
       el.className = 'sim-out';
@@ -448,6 +499,26 @@
       else if (o.oled.length) scr.innerHTML = o.oled.map(l => `<div class="ol">${esc(l[0])}<b>${esc(l[1])}</b></div>`).join('');
       else scr.innerHTML = '<div class="ol">NEMOCLAW LAB READY</div>';
     });
+    set('lcd', el => {
+      const scr = el.querySelector('[data-el]');
+      if (!S.running) scr.innerHTML = '<div>— POWER OFF —</div>';
+      else if (o.lcd.length) scr.innerHTML = o.lcd.map(l => `<div>${esc(l[0])} <b>${esc(l[1])}</b></div>`).join('');
+      else scr.innerHTML = '<div>NEMOCLAW LAB</div>';
+    });
+    set('pump', el => el.querySelector('[data-el]').classList.toggle('on', S.running && o.pump));
+    set('strip', el => {
+      const strip = el.querySelector('[data-el]');
+      const color = !S.running || o.strip === 'off' ? '#d8d2c2'
+        : o.strip === 'red' ? '#ff4433'
+        : o.strip === 'warm' ? '#ffb055'
+        : '#f5f2ea';
+      const glow = S.running && o.strip !== 'off';
+      strip.querySelectorAll('i').forEach(i => {
+        i.style.background = color;
+        i.style.boxShadow = glow ? `0 0 9px ${color}` : 'none';
+      });
+    });
+    if (refs.encPos) refs.encPos.textContent = 'POS ' + o.encoderPos;
   }
 
   function updateSimLog(log) {

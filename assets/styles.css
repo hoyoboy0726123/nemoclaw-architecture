@@ -260,7 +260,25 @@ select, input, textarea { font-family: var(--mono); }
 .erc-badge { margin-left: auto; font-size: 11px; letter-spacing: .08em; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
 .erc-ok { background: rgba(24, 138, 75, .12); color: var(--green); }
 .erc-bad { background: rgba(194, 64, 42, .12); color: var(--red); }
-.part-palette { display: flex; flex-wrap: wrap; gap: 6px; }
+.part-palette { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: flex-start; }
+.pal-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pal-head {
+  background: transparent;
+  border: 0;
+  color: var(--dim);
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pal-head .tri { color: var(--accent); font-size: 10px; }
+.pal-head:hover { color: var(--accent); }
+.pal-row { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.pal-group.collapsed .pal-row { display: none; }
 .part-chip {
   background: #fff;
   border: 1px solid var(--border-2);
@@ -526,6 +544,26 @@ select, input, textarea { font-family: var(--mono); }
 }
 .sim-oled .ol { color: #7ee0f2; }
 .sim-oled .ol b { color: #ffd23f; font-weight: 600; margin-left: 10px; }
+.sim-pump { font-size: 22px; opacity: .25; }
+.sim-pump.on { opacity: 1; animation: drip 1s infinite; }
+@keyframes drip { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(4px) } }
+.sim-strip { display: flex; gap: 5px; justify-content: center; padding: 6px 0; }
+.sim-strip i { display: block; width: 13px; height: 13px; border-radius: 4px; background: #d8d2c2; border: 1px solid #bdb5a0; transition: all .2s; }
+.sim-lcd {
+  background: #223a12;
+  border: 2px solid #16260c;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  min-height: 54px;
+  min-width: 150px;
+  text-align: left;
+  color: #a9d16a;
+}
+.sim-lcd b { color: #d3f0a0; font-weight: 600; margin-left: 8px; }
+.sim-enc-pos { font-family: var(--mono); font-weight: 700; color: var(--accent); align-self: center; font-size: 12.5px; letter-spacing: .06em; }
 .sim-mqtt { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; }
 .sim-log { max-height: 190px; overflow-y: auto; padding: 8px 12px; font-size: 11.5px; line-height: 1.8; }
 .sim-log .lg-out { color: var(--accent); }

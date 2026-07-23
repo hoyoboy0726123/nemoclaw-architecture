@@ -365,6 +365,96 @@ CF.Board3D = (function () {
         pins: { VCC: [colX(c0), 1.6, zp], IN: [colX(c0 + 1), 1.6, zp], GND: [colX(c0 + 2), 1.6, zp] },
         anchor: [cx, 7.6, zc], cols: 6
       };
+    },
+    ds18b20(scene, c0) {
+      const z = ROWS.b, cx = colX(c0 + 1);
+      legs(scene, [c0, c0 + 1, c0 + 2], z, 1.7);
+      addBox(scene, cx, 3.2, z, 4.2, 2.6, 0.9, '#20565e');
+      addCylY(scene, cx, 5.8, z, 0.95, 2.8, '#b9c0c6', 10);
+      addCylY(scene, cx, 8.6, z, 0.6, 1.0, '#1a1a1a', 8);
+      return {
+        pins: { VCC: [colX(c0), 1.6, z], DATA: [colX(c0 + 1), 1.6, z], GND: [colX(c0 + 2), 1.6, z] },
+        anchor: [cx, 10.2, z], cols: 5
+      };
+    },
+    mpu6050(scene, c0) {
+      const z = ROWS.b, cx = colX(c0 + 1.5);
+      legs(scene, [c0, c0 + 1, c0 + 2, c0 + 3], z, 1.7);
+      addBox(scene, cx, 3.2, z, 5.4, 3.8, 1.0, '#6b3fa0');
+      addBox(scene, cx, 4.6, z + 0.52, 1.6, 1.6, 0.12, '#0e0e0e');
+      return {
+        pins: { VCC: [colX(c0), 1.6, z], GND: [colX(c0 + 1), 1.6, z], SCL: [colX(c0 + 2), 1.6, z], SDA: [colX(c0 + 3), 1.6, z] },
+        anchor: [cx, 7.4, z], cols: 6
+      };
+    },
+    mq2(scene, c0) {
+      const z = ROWS.b, cx = colX(c0 + 1);
+      legs(scene, [c0, c0 + 1, c0 + 2], z, 1.5);
+      addBox(scene, cx, 3.0, z, 5.6, 0.8, 4.2, '#7a3b3b');
+      addCylY(scene, cx, 3.8, z, 2.1, 3.0, '#c0c6ca', 12);
+      scene.dots.push({ p: [cx, 6.84, z], r: 1.4, color: '#8a9096' });
+      return {
+        pins: { VCC: [colX(c0), 1.6, z], AO: [colX(c0 + 1), 1.6, z], GND: [colX(c0 + 2), 1.6, z] },
+        anchor: [cx, 7.6, z], cols: 5
+      };
+    },
+    lcd1602(scene, c0) {
+      const zp = ROWS.i, cx = colX(c0 + 5), zb = zp - 0.55;
+      legs(scene, [c0, c0 + 1, c0 + 2, c0 + 3], zp, 1.6);
+      addBox(scene, cx, 3.0, zb, 21.5, 7.6, 1.0, '#1e6b3c');
+      addBox(scene, cx, 4.4, zb + 0.56, 18.4, 4.8, 0.14, '#8fb84e');
+      addBox(scene, cx, 5.6, zb + 0.68, 16.8, 1.1, 0.05, '#4a6b1e');
+      addBox(scene, cx, 7.2, zb + 0.68, 16.8, 1.1, 0.05, '#4a6b1e');
+      return {
+        pins: { VCC: [colX(c0), 1.6, zp], GND: [colX(c0 + 1), 1.6, zp], SCL: [colX(c0 + 2), 1.6, zp], SDA: [colX(c0 + 3), 1.6, zp] },
+        anchor: [cx + 4, 11.4, zb], cols: 14
+      };
+    },
+    encoder(scene, c0) {
+      const zp = ROWS.i, cx = colX(c0 + 2), zc = zp - 1.2;
+      legs(scene, [c0, c0 + 1, c0 + 2, c0 + 3, c0 + 4], zp, 0.9);
+      addBox(scene, cx, 2.4, zc, 6.2, 0.7, 5.4, '#2c5c38');
+      addBox(scene, cx, 3.1, zc, 4.4, 2.0, 4.4, '#3a3a3a');
+      addCylY(scene, cx, 5.1, zc, 1.1, 2.0, '#b9c0c6', 10);
+      addCylY(scene, cx, 7.1, zc, 1.9, 1.8, '#1c1c1c', 12);
+      return {
+        pins: { GND: [colX(c0), 1.6, zp], VCC: [colX(c0 + 1), 1.6, zp], SW: [colX(c0 + 2), 1.6, zp], DT: [colX(c0 + 3), 1.6, zp], CLK: [colX(c0 + 4), 1.6, zp] },
+        anchor: [cx, 9.6, zc], cols: 7
+      };
+    },
+    pot(scene, c0) {
+      const zp = ROWS.i, cx = colX(c0 + 1), zc = zp - 1.2;
+      legs(scene, [c0, c0 + 1, c0 + 2], zp, 0.9);
+      addBox(scene, cx, 2.4, zc, 4.6, 2.2, 4.6, '#356bab');
+      addCylY(scene, cx, 4.6, zc, 1.0, 1.4, '#e8e4da', 10);
+      addBox(scene, cx, 6.0, zc, 0.5, 0.5, 1.8, '#8a8375');
+      return {
+        pins: { T1: [colX(c0), 1.6, zp], WIPER: [colX(c0 + 1), 1.6, zp], T2: [colX(c0 + 2), 1.6, zp] },
+        anchor: [cx, 7.4, zc], cols: 5
+      };
+    },
+    ws2812(scene, c0) {
+      const zp = ROWS.i, cx = colX(c0 + 4), zc = zp - 1.0;
+      legs(scene, [c0, c0 + 1, c0 + 2], zp, 0.7);
+      addBox(scene, cx, 2.1, zc, 14.5, 0.6, 2.8, '#2c2c34');
+      for (let i = 0; i < 5; i++) {
+        addBox(scene, cx - 5.6 + i * 2.8, 2.7, zc, 1.5, 0.4, 1.5, '#f2f2e8', { emissive: true });
+      }
+      return {
+        pins: { VCC: [colX(c0), 1.6, zp], DIN: [colX(c0 + 1), 1.6, zp], GND: [colX(c0 + 2), 1.6, zp] },
+        anchor: [cx + 3, 5.2, zc], cols: 10
+      };
+    },
+    pump(scene, c0) {
+      const zp = ROWS.i, cx = colX(c0 + 1), zc = zp - 1.4;
+      legs(scene, [c0, c0 + 1, c0 + 2], zp, 0.9);
+      addBox(scene, cx, 2.4, zc, 6.4, 0.7, 5.2, '#173a63');
+      addCylY(scene, cx - 0.6, 3.1, zc, 2.4, 3.6, '#2b6fa8', 12);
+      addCylY(scene, cx + 2.4, 5.4, zc, 0.7, 1.6, '#b9c0c6', 8);
+      return {
+        pins: { VCC: [colX(c0), 1.6, zp], IN: [colX(c0 + 1), 1.6, zp], GND: [colX(c0 + 2), 1.6, zp] },
+        anchor: [cx, 8.2, zc], cols: 6
+      };
     }
   };
 

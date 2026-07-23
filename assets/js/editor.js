@@ -84,18 +84,34 @@ CF.Editor = (function () {
     return { find, union };
   }
 
+  /* 共用：建立連通圖。withPassive=false 時不含電阻橋接（用於限流電阻檢查） */
+  function buildUF(withPassive) {
+    const m = boardMeta();
+    const uf = makeUF();
+    for (const w of st.wires) uf.union(nodeOf(w.a), nodeOf(w.b));
+    // 板內部：所有 GND 腳彼此相通
+    const gndHoles = [];
+    m.board.pinsTop.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowT }); });
+    m.board.pinsBottom.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowB }); });
+    for (let i = 1; i < gndHoles.length; i++) uf.union(nodeOf(gndHoles[0]), nodeOf(gndHoles[i]));
+    // 被動元件（電阻）把兩端節點「透過元件」連通
+    if (withPassive) {
+      for (const ep of st.parts) {
+        if (CF.PARTS[ep.id].cls === 'PASSIVE') {
+          const pp = partPins(ep);
+          uf.union(nodeOf(pp[0].hole), nodeOf(pp[1].hole));
+        }
+      }
+    }
+    return { uf, gndHoles };
+  }
+
   /* ---------------- 推導方案 + ERC ---------------- */
   function derive() {
     const m = boardMeta();
     const board = m.board;
-    const uf = makeUF();
-    for (const w of st.wires) uf.union(nodeOf(w.a), nodeOf(w.b));
-
-    // 板內部：所有 GND 腳彼此相通
-    const gndHoles = [];
-    board.pinsTop.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowT }); });
-    board.pinsBottom.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowB }); });
-    for (let i = 1; i < gndHoles.length; i++) uf.union(nodeOf(gndHoles[0]), nodeOf(gndHoles[i]));
+    const { uf, gndHoles } = buildUF(true);
+    const ufNoP = buildUF(false).uf;   // 不含電阻的直接連通（限流檢查用）
 
     const gndNet = gndHoles.length ? uf.find(nodeOf(gndHoles[0])) : null;
     const powerNets = {};   // 電壓 → net
@@ -132,6 +148,7 @@ CF.Editor = (function () {
     let railUsed = null;
     let sigCount = 0, wired = 0;
     const gpioUse = {};   // gpioName → [pinLabel]
+    const seriesCheck = [];  // 需要限流電阻檢查的腳：{def, pinName, hole, assigned, level}
     for (const ep of st.parts) {
       const def = CF.PARTS[ep.id];
       const pins = partPins(ep).map(p => ({ n: p.name, t: normType(def, p), macro: p.macro || findMacro(def, p.name), assigned: null }));
@@ -139,6 +156,7 @@ CF.Editor = (function () {
       raw.forEach((rp, i) => {
         const net = uf.find(nodeOf(rp.hole));
         const pin = pins[i];
+        if (pin.t === 'P') return;   // 被動元件端點不做腳位檢查
         if (pin.t === 'V') {
           const hit = Object.entries(powerNets).find(([, n]) => n === net);
           if (!hit) err(`${def.name} 未供電`, `${pin.n} 沒有接到任何電源軌／電源腳。`);
@@ -159,11 +177,34 @@ CF.Editor = (function () {
             wired++;
             const key = names[0] + '|' + busKind(pin);
             (gpioUse[key] = gpioUse[key] || []).push(`${def.name} ${pin.n}`);
+            // 類比腳位檢查
+            if (pin.t === 'A' && board.analogPool.length && !board.analogPool.includes(names[0])) {
+              warn(`${def.name} 需要類比腳位`, `${pin.n} 接在 ${names[0]}，該腳無 ADC 功能，請改接 ${board.analogPool.join('、')}。`);
+            }
+            // LED／WS2812 限流電阻檢查（稍後用無電阻連通圖判斷）
+            if (ep.id === 'led' && pin.n === 'ANODE') seriesCheck.push({ def, pinName: pin.n, hole: rp.hole, assigned: names[0], level: 'warn' });
+            if (ep.id === 'ws2812' && pin.n === 'DIN') seriesCheck.push({ def, pinName: pin.n, hole: rp.hole, assigned: names[0], level: 'info' });
           }
         }
       });
-      parts.push({ id: ep.id, def, pins, side: ep.side, uid: ep.uid });
+      const entry = { id: ep.id, def, pins, side: ep.side, uid: ep.uid };
+      if (def.cls === 'PASSIVE') entry.value = ep.value || 220;
+      parts.push(entry);
     }
+
+    // 限流電阻檢查：訊號若「不經電阻」就直達 GPIO → 提醒
+    for (const sc of seriesCheck) {
+      const gpioHole = boardPinHole(sc.assigned);
+      if (!gpioHole) continue;
+      const direct = ufNoP.find(nodeOf(sc.hole)) === ufNoP.find(nodeOf(gpioHole));
+      if (direct) {
+        if (sc.level === 'warn') warn('缺少限流電阻', `${sc.def.name} ${sc.pinName} 直接接到 ${sc.assigned}，請串聯 220Ω 電阻保護 LED 與 GPIO。`);
+        else info('建議串接電阻', `${sc.def.name} ${sc.pinName} 建議串 330Ω 電阻，抑制訊號反射。`);
+      } else {
+        pass('限流電阻', `${sc.def.name} ${sc.pinName} 已透過電阻串接到 ${sc.assigned}。`);
+      }
+    }
+    if (st.parts.some(p => p.id === 'pump')) info('水泵驅動', '實體接線請經繼電器／MOSFET 模組驅動水泵，勿由 GPIO 直接供電。');
 
     // GPIO 重複（I2C 同號腳共用 SDA/SCL 允許）
     for (const [key, users] of Object.entries(gpioUse)) {
@@ -211,6 +252,7 @@ CF.Editor = (function () {
     const railVLabel = `麵包板 紅色 ${railV} 正電源軌`;
     for (const part of parts) {
       for (const pin of part.pins) {
+        if (pin.t === 'P') continue;   // 被動元件不列入網表
         if (pin.t === 'V') nets.push({ kind: 'V', from: `${part.def.name} ${pin.n}`, to: `→ ${railVLabel}`, note: '電源／共用', badge: 'POWER', locked: true });
         else if (pin.t === 'G') nets.push({ kind: 'G', from: `${part.def.name} ${pin.n}`, to: '→ 麵包板 藍色 GND 負電源軌', note: '電源／共用', badge: 'POWER', locked: true });
         else nets.push({
@@ -265,12 +307,12 @@ CF.Editor = (function () {
       .slice().sort((a, b) => (botRank[a.def.cls] ?? 9) - (botRank[b.def.cls] ?? 9));
     for (const p of tops) {
       st.parts.push({ uid: st.uidSeq++, id: p.id, c0: Math.min(topCur, COLS - 5), side: 'top', ref: p });
-      topCur += CF.FOOTPRINTS[p.id].w + 2;
+      topCur += (CF.FOOTPRINTS[p.id].bodyW || CF.FOOTPRINTS[p.id].w) + 2;
     }
     for (const p of bots) {
       if (p.def.cls !== 'INPUT' && botCur < topCur + 2) botCur = topCur + 2;
       st.parts.push({ uid: st.uidSeq++, id: p.id, c0: Math.min(botCur, COLS - 5), side: 'bottom', ref: p });
-      botCur += CF.FOOTPRINTS[p.id].w + 3;
+      botCur += (CF.FOOTPRINTS[p.id].bodyW || CF.FOOTPRINTS[p.id].w) + 3;
     }
     // 板子電源 → 上排軌
     const pw = boardPinHole(plan.powerPin) || boardPinHole('3V3');
@@ -398,8 +440,7 @@ CF.Editor = (function () {
     }
 
     // ─ 連通圖（供線色） ─
-    const uf = makeUF();
-    for (const w of st.wires) uf.union(nodeOf(w.a), nodeOf(w.b));
+    const uf = buildUF(true).uf;
     const gh = boardPinHole('GND');
     const gndNet = gh ? uf.find(nodeOf(gh)) : null;
     const powerNets = {};
@@ -442,15 +483,23 @@ CF.Editor = (function () {
       ctx.fillStyle = '#8a8375'; ctx.fill();
     }
     // 本體
+    const bw = fp.bodyW || fp.w;
     let x0, y0, w, h;
     if (fp.gap) {
       const gy = (g.ys.e + g.ys.f) / 2;
-      x0 = g.colX(ep.c0) - g.step * 0.5; w = g.step * (fp.w - 1) + g.step;
+      x0 = g.colX(ep.c0) - g.step * 0.5; w = g.step * (bw - 1) + g.step;
       y0 = gy - g.rowGap * 1.1; h = g.rowGap * 2.2;
+    } else if (fp.passive) {
+      // 電阻：平躺橫跨兩孔
+      const row = ep.side === 'top' ? 'b' : 'i';
+      const py = g.ys[row];
+      x0 = g.colX(ep.c0) - g.step * 0.35; w = g.step * (fp.w - 1) + g.step * 0.7;
+      h = g.rowGap * 0.9;
+      y0 = py - h / 2;
     } else {
       const row = ep.side === 'top' ? 'b' : 'i';
       const py = g.ys[row];
-      x0 = g.colX(ep.c0) - g.step * 0.5; w = g.step * (fp.w - 1) + g.step;
+      x0 = g.colX(ep.c0) - g.step * 0.5; w = g.step * (bw - 1) + g.step;
       h = g.rowGap * 2.4;
       y0 = ep.side === 'top' ? py - h - g.rowGap * 0.35 : py + g.rowGap * 0.35;
     }
@@ -470,7 +519,10 @@ CF.Editor = (function () {
     ctx.fillStyle = '#ffffff';
     ctx.font = `600 ${Math.max(9, g.step * 0.55)}px "IBM Plex Mono","Noto Sans TC",monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(def.titleName, x0 + w / 2, y0 + h / 2 + 4, w - 6);
+    const label = fp.passive
+      ? ((ep.value || 220) >= 1000 ? (ep.value || 220) / 1000 + 'kΩ' : (ep.value || 220) + 'Ω')
+      : def.titleName;
+    ctx.fillText(label, x0 + w / 2, y0 + h / 2 + 4, w - 4);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
     // hover 腳名
@@ -569,7 +621,7 @@ CF.Editor = (function () {
   function overlaps(partId, c0, side) {
     const fp = CF.FOOTPRINTS[partId];
     const m = boardMeta();
-    const range = [c0, c0 + fp.w - 1];
+    const range = [c0, c0 + (fp.bodyW || fp.w) - 1];
     if (c0 < 0 || range[1] > COLS - 1) return true;
     // 與板子重疊
     if (range[1] >= m.b0 && range[0] <= m.b0 + m.n - 1) return true;
@@ -577,7 +629,9 @@ CF.Editor = (function () {
       if (st.drag && other.uid === st.drag.uid) continue;
       const ofp = CF.FOOTPRINTS[other.id];
       const sameZone = ofp.gap || fp.gap ? true : other.side === side;
-      if (sameZone && range[1] >= other.c0 - 1 && range[0] <= other.c0 + ofp.w) return true;
+      const gapMargin = (fp.passive || ofp.passive) ? 0 : 1;   // 被動元件允許緊貼
+      const ow = ofp.bodyW || ofp.w;
+      if (sameZone && range[1] >= other.c0 - gapMargin && range[0] <= other.c0 + ow - 1 + gapMargin) return true;
     }
     return false;
   }
@@ -612,7 +666,9 @@ CF.Editor = (function () {
     const [x, y] = localXY(e);
     if (st.placing) {
       if (st.ghost && st.ghost.ok) {
-        st.parts.push({ uid: st.uidSeq++, id: st.placing, c0: st.ghost.c0, side: st.ghost.side });
+        const np = { uid: st.uidSeq++, id: st.placing, c0: st.ghost.c0, side: st.ghost.side };
+        if (CF.PARTS[st.placing].cls === 'PASSIVE') np.value = 220;
+        st.parts.push(np);
         st.placing = null; st.ghost = null;
         changed();
       }
@@ -689,6 +745,16 @@ CF.Editor = (function () {
       canvas.addEventListener('pointermove', onMove);
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('pointerup', onUp);
+      canvas.addEventListener('dblclick', e => {
+        // 點兩下電阻切換阻值
+        const [x, y] = localXY(e);
+        const p = pickPart(x, y);
+        if (p && CF.PARTS[p.id].cls === 'PASSIVE') {
+          const vals = CF.PARTS[p.id].values || [220, 330, 1000, 4700, 10000];
+          p.value = vals[(vals.indexOf(p.value || 220) + 1) % vals.length];
+          changed();
+        }
+      });
       canvas.addEventListener('pointerleave', () => { st.hover = null; render(); });
       window.addEventListener('keydown', onKey);
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
