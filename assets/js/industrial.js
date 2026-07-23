@@ -63,13 +63,43 @@ CF.Ind = (function () {
       terms: [
         { n: '1', dx: 20, dy: 0, dom: 'main' }, { n: '3', dx: 44, dy: 0, dom: 'main' }, { n: '5', dx: 68, dy: 0, dom: 'main' },
         { n: '2', dx: 20, dy: 84, dom: 'main' }, { n: '4', dx: 44, dy: 84, dom: 'main' }, { n: '6', dx: 68, dy: 84, dom: 'main' },
-        { n: '95', dx: 100, dy: 28, dom: 'ctrl' }, { n: '96', dx: 100, dy: 48, dom: 'ctrl' }
+        { n: '95', dx: 100, dy: 12, dom: 'ctrl' }, { n: '96', dx: 100, dy: 30, dom: 'ctrl' },
+        { n: '97', dx: 100, dy: 52, dom: 'ctrl' }, { n: '98', dx: 100, dy: 70, dom: 'ctrl' }
       ],
-      bridges: inst => inst.tripped ? [] : [['1', '2'], ['3', '4'], ['5', '6'], ['95', '96']],
-      allPairs: [['1', '2'], ['3', '4'], ['5', '6'], ['95', '96']],
-      why: '馬達過載保護：過載跳脫時切斷主迴路，b 接點（95-96）同時斷開控制迴路讓 MC 釋放。',
-      pinNote: '主迴路串接 1-2/3-4/5-6；95-96 串入 MC 線圈迴路',
+      bridges: inst => inst.tripped ? [['97', '98']] : [['1', '2'], ['3', '4'], ['5', '6'], ['95', '96']],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6'], ['95', '96'], ['97', '98']],
+      why: '馬達過載保護：過載跳脫時切斷主迴路，b 接點（95-96）同時斷開控制迴路讓 MC 釋放；a 接點（97-98）跳脫時閉合，可接警報。',
+      pinNote: '主迴路串接 1-2/3-4/5-6；95-96 串入 MC 線圈迴路；97-98 接蜂鳴器／警示燈',
       alts: [['電子式過載電驛', '設定精確、可通訊'], ['馬達保護斷路器 MMS', 'NFB＋過載二合一']]
+    },
+    tr: {
+      id: 'tr', name: 'TR 限時電驛（通電延時）', label: 'TR', cls: 'CONTROL', w: 96, h: 96, row: 0,
+      color: '#4a3560', coil: ['A1', 'A2'], timed: true,
+      terms: [
+        { n: 'A1', dx: 0, dy: 20, dom: 'ctrl' }, { n: 'A2', dx: 0, dy: 44, dom: 'ctrl' },
+        { n: '55', dx: 96, dy: 14, dom: 'ctrl' }, { n: '56', dx: 96, dy: 32, dom: 'ctrl' },
+        { n: '67', dx: 96, dy: 58, dom: 'ctrl' }, { n: '68', dx: 96, dy: 76, dom: 'ctrl' }
+      ],
+      bridges: inst => (st.timerDone && st.timerDone[inst.uid]) ? [['67', '68']] : [['55', '56']],
+      allPairs: [['55', '56'], ['67', '68']],
+      why: '通電延時（ON-delay）電驛：線圈得電開始計時，到達設定秒數後「延時 b」55-56 打開、「延時 a」67-68 閉合。Y-Δ 降壓啟動的計時核心。點兩下可改秒數。',
+      pinNote: '線圈 A1-A2；55-56 延時斷（b）、67-68 延時通（a）；預設 3 秒，雙擊修改',
+      alts: [['電子式計時器', '數位設定、多段模式'], ['PLC TON 計時器', '程式化，本模式的 PLC 也支援']]
+    },
+    mk: {
+      id: 'mk', name: 'MK 電力電驛', label: 'MK', cls: 'CONTROL', w: 88, h: 88, row: 0,
+      color: '#2e4a5a', coil: ['A1', 'A2'],
+      terms: [
+        { n: 'A1', dx: 0, dy: 20, dom: 'ctrl' }, { n: 'A2', dx: 0, dy: 44, dom: 'ctrl' },
+        { n: '13', dx: 88, dy: 10, dom: 'ctrl' }, { n: '14', dx: 88, dy: 26, dom: 'ctrl' },
+        { n: '23', dx: 88, dy: 42, dom: 'ctrl' }, { n: '24', dx: 88, dy: 58, dom: 'ctrl' },
+        { n: '21', dx: 88, dy: 74, dom: 'ctrl' }, { n: '22', dx: 88, dy: 88, dom: 'ctrl' }
+      ],
+      bridges: (inst, en) => en ? [['13', '14'], ['23', '24']] : [['21', '22']],
+      allPairs: [['13', '14'], ['23', '24'], ['21', '22']],
+      why: '小型控制電驛：線圈得電時 a 接點（13-14、23-24）閉合、b 接點（21-22）打開。用來擴充接點數或做控制邏輯中繼。',
+      pinNote: '線圈 A1-A2；兩組 a：13-14／23-24；一組 b：21-22',
+      alts: [['MC 電磁接觸器', '要切大電流負載時'], ['PLC 內部繼電器 M', '程式化邏輯']]
     },
     pb_nc: {
       id: 'pb_nc', name: 'PB 按鈕（紅・b 接點）', label: 'STOP', cls: 'INPUT', w: 64, h: 66, row: 1,
@@ -92,7 +122,7 @@ CF.Ind = (function () {
       alts: [['照光式按鈕', '內建指示燈'], ['選擇開關 COS', '需要保持位置時使用']]
     },
     pl_g: {
-      id: 'pl_g', name: 'PL 指示燈（綠・運轉）', label: 'PL', cls: 'OUTPUT', w: 56, h: 66, row: 1,
+      id: 'pl_g', name: 'PL 指示燈（綠・運轉）', label: 'GL', cls: 'OUTPUT', w: 56, h: 66, row: 1,
       color: '#24513a', load: ['X1', 'X2'], lamp: '#3ddc84',
       terms: [{ n: 'X1', dx: 16, dy: 66, dom: 'ctrl' }, { n: 'X2', dx: 40, dy: 66, dom: 'ctrl' }],
       bridges: () => [], allPairs: [],
@@ -101,13 +131,35 @@ CF.Ind = (function () {
       alts: [['紅色 PL', '停止／故障指示'], ['蜂鳴器 BZ', '聲音告警']]
     },
     pl_r: {
-      id: 'pl_r', name: 'PL 指示燈（紅・停止）', label: 'PL', cls: 'OUTPUT', w: 56, h: 66, row: 1,
+      id: 'pl_r', name: 'PL 指示燈（紅・警示）', label: 'RL', cls: 'OUTPUT', w: 56, h: 66, row: 1,
       color: '#5c2822', load: ['X1', 'X2'], lamp: '#ff5348',
       terms: [{ n: 'X1', dx: 16, dy: 66, dom: 'ctrl' }, { n: 'X2', dx: 40, dy: 66, dom: 'ctrl' }],
       bridges: () => [], allPairs: [],
       why: '停止指示：經 MC 輔助 b 接點（21-22）取電，MC 釋放時亮起。',
       pinNote: 'X1/X2 串接 MC 的 21-22 後跨接控制電源',
       alts: [['黃色 PL', '過載／異常指示']]
+    },
+    cos: {
+      id: 'cos', name: 'COS 選擇開關', label: 'COS', cls: 'INPUT', w: 64, h: 66, row: 1,
+      color: '#54503a', selector: true,
+      terms: [
+        { n: '1', dx: 8, dy: 66, dom: 'ctrl' }, { n: '2', dx: 24, dy: 66, dom: 'ctrl' },
+        { n: '3', dx: 40, dy: 66, dom: 'ctrl' }, { n: '4', dx: 56, dy: 66, dom: 'ctrl' }
+      ],
+      bridges: inst => inst.on ? [['3', '4']] : [['1', '2']],
+      allPairs: [['1', '2'], ['3', '4']],
+      why: '兩段選擇開關（保持型）：位置 A 導通 1-2、位置 B 導通 3-4。手動／自動或運轉選擇用。點兩下切換位置。',
+      pinNote: '位置 A：1-2；位置 B：3-4；雙擊切換',
+      alts: [['三段 COS', '中間 OFF 檔'], ['鑰匙開關', '需要權限管制時']]
+    },
+    bz: {
+      id: 'bz', name: 'BZ 蜂鳴器', label: 'BZ', cls: 'OUTPUT', w: 56, h: 66, row: 1,
+      color: '#5a4420', load: ['X1', 'X2'], lamp: '#ffb020', buzzer: true,
+      terms: [{ n: 'X1', dx: 16, dy: 66, dom: 'ctrl' }, { n: 'X2', dx: 40, dy: 66, dom: 'ctrl' }],
+      bridges: () => [], allPairs: [],
+      why: '聲音警報：X1/X2 得電即鳴響（模擬會真的出聲）。常經 TH-RY 的 97-98 a 接點做過載警報。',
+      pinNote: 'X1/X2 跨接控制電源（經警報接點）',
+      alts: [['閃光警示燈', '嘈雜環境用視覺告警'], ['聲光一體警報器', '兩者兼具']]
     },
     motor: {
       id: 'motor', name: '三相感應馬達', label: 'M 3~', cls: 'LOAD', w: 112, h: 92, row: 2,
@@ -117,9 +169,41 @@ CF.Ind = (function () {
       why: '被控負載。U/V/W 三相齊備才會運轉；缺相會燒毀馬達（ERC 會擋）。',
       pinNote: 'U/V/W 接 TH-RY 出線側 2/4/6',
       alts: [['單相馬達', '小型負載'], ['變頻器＋馬達', '需要調速時（未支援）']]
+    },
+    motor6: {
+      id: 'motor6', name: '三相馬達（Y-Δ 六出線）', label: 'M 3~ 6T', cls: 'LOAD', w: 168, h: 92, row: 2,
+      color: '#3a4a5c', motor: true, motor6: true, motorTerms: ['U1', 'V1', 'W1'],
+      terms: [
+        { n: 'U1', dx: 22, dy: 0, dom: 'main' }, { n: 'V1', dx: 50, dy: 0, dom: 'main' }, { n: 'W1', dx: 78, dy: 0, dom: 'main' },
+        { n: 'W2', dx: 110, dy: 0, dom: 'main' }, { n: 'U2', dx: 136, dy: 0, dom: 'main' }, { n: 'V2', dx: 162, dy: 0, dom: 'main' }
+      ],
+      bridges: () => [], allPairs: [],
+      why: '六出線馬達：U1-U2／V1-V2／W1-W2 三組繞組。U2V2W2 短接＝星形（Y，降壓啟動）；U2V2W2 接到相鄰相＝三角形（Δ，全壓運轉）。',
+      pinNote: 'U1/V1/W1 接主 MC 出線；U2/V2/W2 由 MCS 短接（Y）或 MCD 換相供電（Δ）',
+      alts: [['三出線馬達', '不需 Y-Δ 時較單純'], ['軟啟動器', '電子式降壓啟動']]
+    },
+    plc: {
+      id: 'plc', name: 'PLC 可程式控制器', label: 'PLC', cls: 'CONTROL', w: 264, h: 104, row: 0,
+      color: '#23405c', plc: true, single: true,
+      terms: [
+        { n: 'L', dx: 20, dy: 0, dom: 'ctrl' }, { n: 'N', dx: 42, dy: 0, dom: 'ctrl' }, { n: 'COM', dx: 70, dy: 0, dom: 'ctrl' },
+        { n: 'X0', dx: 98, dy: 0, dom: 'ctrl' }, { n: 'X1', dx: 120, dy: 0, dom: 'ctrl' }, { n: 'X2', dx: 142, dy: 0, dom: 'ctrl' }, { n: 'X3', dx: 164, dy: 0, dom: 'ctrl' },
+        { n: 'X4', dx: 186, dy: 0, dom: 'ctrl' }, { n: 'X5', dx: 208, dy: 0, dom: 'ctrl' }, { n: 'X6', dx: 230, dy: 0, dom: 'ctrl' }, { n: 'X7', dx: 252, dy: 0, dom: 'ctrl' },
+        { n: 'C0', dx: 20, dy: 104, dom: 'ctrl' },
+        { n: 'Y0', dx: 60, dy: 104, dom: 'ctrl' }, { n: 'Y1', dx: 86, dy: 104, dom: 'ctrl' }, { n: 'Y2', dx: 112, dy: 104, dom: 'ctrl' }, { n: 'Y3', dx: 138, dy: 104, dom: 'ctrl' },
+        { n: 'Y4', dx: 164, dy: 104, dom: 'ctrl' }, { n: 'Y5', dx: 190, dy: 104, dom: 'ctrl' }, { n: 'Y6', dx: 216, dy: 104, dom: 'ctrl' }, { n: 'Y7', dx: 242, dy: 104, dom: 'ctrl' }
+      ],
+      bridges: inst => {
+        const o = st.plcOut[inst.uid];
+        return o ? Object.keys(o).filter(k => o[k]).map(k => [k, 'C0']) : [];
+      },
+      allPairs: ['Y0', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5', 'Y6', 'Y7'].map(y => [y, 'C0']),
+      why: '小型 PLC（8 DI／8 DO，繼電器輸出）：控制邏輯寫在梯形圖裡，取代硬接線。輸入 X 由 COM 經按鈕接點觸發；輸出 Y 得電時與 C0 導通，可驅動 MC 線圈或指示燈。點兩下開啟梯形圖編輯器。',
+      pinNote: 'L/N 接 C1/C2 電源；COM→按鈕→X0..X7；C0 接 C1、Y0..Y7 接負載（MC 線圈／PL）',
+      alts: [['純電驛邏輯', '接點少時傳統工配即可'], ['大型 PLC＋HMI', '點數多、需人機介面時']]
     }
   };
-  const PALETTE = ['nfb', 'mc', 'thry', 'pb_nc', 'pb_no', 'pl_g', 'pl_r', 'motor'];
+  const PALETTE = ['nfb', 'mc', 'tr', 'mk', 'thry', 'pb_nc', 'pb_no', 'cos', 'pl_g', 'pl_r', 'bz', 'motor', 'motor6', 'plc'];
 
   /* ================= 狀態 ================= */
   const LW = 1180, LH = 540;              // 邏輯畫布尺寸
@@ -132,7 +216,9 @@ CF.Ind = (function () {
     tool: 'wire',  // wire | delete
     wireStart: null, hover: null,
     running: false, timer: null, coilPrev: {}, live: null, motorAngle: 0,
-    plan: null, uidSeq: 1, log: []
+    plan: null, uidSeq: 1, log: [],
+    timerDone: {},   // TR 計時到達 {uid:bool}
+    plcOut: {}       // PLC 輸出 {uid:{Y0:bool,...}}
   };
 
   function defOf(p) { return DEFS[p.id]; }
@@ -185,17 +271,25 @@ CF.Ind = (function () {
     return uf;
   }
 
-  /* 輸出併聯（需互鎖）的 MC 群組：正逆轉檢查要逐顆單獨閉合 */
+  /* 需互鎖的 MC 判定：只閉合某「一對」MC（其餘 MC 主接點開路）就會相間短路
+   * ＝這對 MC 不可同時投入（正逆轉換相、Y-Δ 星角）。輸出併聯與經馬達端子的
+   * 短路路徑都涵蓋；順序啟動等各帶各負載的組合不會誤判。 */
+  function shortedPhases(uf) {
+    const src = sourcePart();
+    const r = uf.find(tid(src.uid, 'R')), s = uf.find(tid(src.uid, 'S')), t = uf.find(tid(src.uid, 'T'));
+    return r === s || s === t || r === t;
+  }
+  function mcPairShorts(A, B, mcs) {
+    const skip = new Set(mcs.filter(m => m !== A && m !== B).map(m => m.uid));
+    return shortedPhases(buildUF('all', null, { skipMainsUids: skip }));
+  }
   function tiedMcGroup() {
     const mcs = st.parts.filter(p => p.id === 'mc');
     if (mcs.length < 2) return [];
-    const ufW = buildUF('wires');
     const tied = new Set();
     for (let i = 0; i < mcs.length; i++) {
       for (let j = i + 1; j < mcs.length; j++) {
-        const hit = ['2', '4', '6'].some(ta => ['2', '4', '6'].some(tb =>
-          ufW.find(tid(mcs[i].uid, ta)) === ufW.find(tid(mcs[j].uid, tb))));
-        if (hit) { tied.add(mcs[i].uid); tied.add(mcs[j].uid); }
+        if (mcPairShorts(mcs[i], mcs[j], mcs)) { tied.add(mcs[i].uid); tied.add(mcs[j].uid); }
       }
     }
     return [...tied];
@@ -234,20 +328,31 @@ CF.Ind = (function () {
     if (nC1 === nC2) shorts.push('控制迴路短路（C1-C2 直通）');
     if (nR === nS || nS === nT || nR === nT) shorts.push('相間短路（R/S/T 直通）');
     // 負載狀態
-    const lit = {}, motorRun = {};
+    const lit = {}, motorRun = {}, motorMode = {};
+    const phaseOf = n => n === nR ? 'R' : n === nS ? 'S' : n === nT ? 'T' : null;
     for (const p of st.parts) {
       const d = defOf(p);
       if (d.load) {
         const a = result.uf.find(tid(p.uid, d.load[0])), b = result.uf.find(tid(p.uid, d.load[1]));
         lit[p.uid] = nC1 !== nC2 && ((a === nC1 && b === nC2) || (a === nC2 && b === nC1));
       }
-      if (d.motor) {
-        const phases = ['U', 'V', 'W'].map(t => result.uf.find(tid(p.uid, t)));
-        const map = phases.map(n => n === nR ? 'R' : n === nS ? 'S' : n === nT ? 'T' : null);
+      if (d.motor6) {
+        // 六出線：U1V1W1 三相齊備＋（U2V2W2 短接成星點＝Y／U2V2W2 各接一相＝Δ）
+        const n1 = ['U1', 'V1', 'W1'].map(t => result.uf.find(tid(p.uid, t)));
+        const n2 = ['U2', 'V2', 'W2'].map(t => result.uf.find(tid(p.uid, t)));
+        const m1 = n1.map(phaseOf);
+        const okIn = m1.every(Boolean) && new Set(m1).size === 3;
+        const star = n2[0] === n2[1] && n2[1] === n2[2] && n2.every(n => !phaseOf(n));
+        const m2 = n2.map(phaseOf);
+        const delta = m2.every(Boolean) && new Set(m2).size === 3;
+        motorRun[p.uid] = okIn && (star || delta);
+        motorMode[p.uid] = okIn ? (star ? 'Y' : delta ? 'Δ' : null) : null;
+      } else if (d.motor) {
+        const map = ['U', 'V', 'W'].map(t => phaseOf(result.uf.find(tid(p.uid, t))));
         motorRun[p.uid] = map.every(Boolean) && new Set(map).size === 3;
       }
     }
-    return { uf: result.uf, coil: result.coil, lit, motorRun, shorts, oscillating: result.oscillating, nets: { nC1, nC2, nR, nS, nT } };
+    return { uf: result.uf, coil: result.coil, lit, motorRun, motorMode, shorts, oscillating: result.oscillating, nets: { nC1, nC2, nR, nS, nT } };
   }
 
   /* ================= ERC ================= */
@@ -294,26 +399,27 @@ CF.Ind = (function () {
         const soloSets = tied.length >= 2
           ? tied.map(uid => new Set(tied.filter(u => u !== uid)))
           : [null];
+        const mts = d.motorTerms || ['U', 'V', 'W'];
         let anyFull = false, anyDistinct = false, firstHit = null;
         for (const skip of soloSets) {
           const uf2 = skip ? buildUF('all', null, { skipMainsUids: skip }) : ufAll;
           const r2 = uf2.find(tid(src.uid, 'R')), s2 = uf2.find(tid(src.uid, 'S')), t2 = uf2.find(tid(src.uid, 'T'));
-          const hit = ['U', 'V', 'W'].map(t => {
+          const hit = mts.map(t => {
             const n = uf2.find(tid(p.uid, t));
             return n === r2 ? 'R' : n === s2 ? 'S' : n === t2 ? 'T' : null;
           });
           if (!firstHit) firstHit = hit;
           if (hit.every(Boolean)) { anyFull = true; if (new Set(hit).size === 3) anyDistinct = true; }
         }
-        if (!anyFull) err('馬達缺相', `U/V/W 有端子接不到任何相（即使所有接點閉合）——缺相運轉會燒毀馬達。`);
-        else if (!anyDistinct) err('馬達相別重複', `U/V/W 接到了重複的相（${firstHit.join('/')}），請檢查主迴路配線。`);
+        if (!anyFull) err('馬達缺相', `${mts.join('/')} 有端子接不到任何相（即使所有接點閉合）——缺相運轉會燒毀馬達。`);
+        else if (!anyDistinct) err('馬達相別重複', `${mts.join('/')} 接到了重複的相（${firstHit.join('/')}），請檢查主迴路配線。`);
         else {
           // 保護串接：拿掉 TH-RY／NFB 主接點後馬達應該斷電（互鎖群組同樣只閉合一顆 MC）
           const soloOpts = tied.length >= 2 ? { skipMainsUids: new Set(tied.slice(1)) } : undefined;
           const checkSerial = (skipId, okName, warnName, warnDesc) => {
             const ufSkip = buildUF('all-skip:' + skipId, null, soloOpts);
             const r2 = ufSkip.find(tid(src.uid, 'R')), s2 = ufSkip.find(tid(src.uid, 'S')), t2 = ufSkip.find(tid(src.uid, 'T'));
-            const ph2 = ['U', 'V', 'W'].map(t => ufSkip.find(tid(p.uid, t)));
+            const ph2 = mts.map(t => ufSkip.find(tid(p.uid, t)));
             const still = ph2.every(n => n === r2 || n === s2 || n === t2);
             if (still) warn(warnName, warnDesc);
             else pass(okName, `${skipId === 'thry' ? 'TH-RY' : 'NFB'} 已正確串接於馬達主迴路。`);
@@ -326,10 +432,23 @@ CF.Ind = (function () {
       }
     }
 
-    // 電氣互鎖：多顆 MC 輸出併聯（正逆轉）時，線圈必須互經對方 21-22 b 接點
+    // PLC：電源與梯形圖
+    const plcP = st.parts.find(p => defOf(p).plc);
+    if (plcP) {
+      const nL = ufAll.find(tid(plcP.uid, 'L')), nN = ufAll.find(tid(plcP.uid, 'N'));
+      const powered = nL !== nN && (nL === nC1 || nL === nC2) && (nN === nC1 || nN === nC2);
+      if (powered) pass('PLC 電源', 'L/N 已接上 110V 控制電源。');
+      else warn('PLC 未供電', 'L/N 沒有分別接到 C1 與 C2——通電後 PLC 不會運作，輸出全部 OFF。');
+      if (window.CF && CF.Plc) {
+        const v = CF.Plc.validateAll();
+        if (!v.rungs) info('梯形圖空白', '雙擊 PLC（或按工具列「梯形圖」）撰寫程式；空程式時輸出全部 OFF。');
+        else v.warnings.forEach(m => warn('梯形圖', m));
+      }
+    }
+
+    // 電氣互鎖：同時投入會相間短路的 MC 配對（正逆轉、Y-Δ），線圈必須互經對方 21-22 b 接點
     const mcs = st.parts.filter(p => p.id === 'mc');
     if (mcs.length >= 2) {
-      const ufW = buildUF('wires');
       const coilReach = uf2 => {
         // 檢查每顆 MC 線圈在該假設下是否仍可達控制電源
         const c1 = uf2.find(tid(src.uid, 'C1')), c2 = uf2.find(tid(src.uid, 'C2'));
@@ -341,14 +460,12 @@ CF.Ind = (function () {
       for (let i = 0; i < mcs.length; i++) {
         for (let j = i + 1; j < mcs.length; j++) {
           const A = mcs[i], B = mcs[j];
-          const tied = ['2', '4', '6'].some(ta => ['2', '4', '6'].some(tb =>
-            ufW.find(tid(A.uid, ta)) === ufW.find(tid(B.uid, tb))));
-          if (!tied) continue;   // 輸出未併聯（如順序啟動各帶各的馬達）
+          if (!mcPairShorts(A, B, mcs)) continue;   // 同時投入不短路（如順序啟動各帶各的馬達）
           const aNeedsB = !coilReach(buildUF('all-skipaux:' + B.uid))(A);
           const bNeedsA = !coilReach(buildUF('all-skipaux:' + A.uid))(B);
           const la = labelOf(A.uid, '').trim(), lb = labelOf(B.uid, '').trim();
-          if (aNeedsB && bNeedsA) pass('電氣互鎖', `${la} 與 ${lb} 線圈互經對方 21-22 b 接點，正逆轉互鎖正確。`);
-          else err('缺電氣互鎖', `${la} 與 ${lb} 的主接點輸出併聯（換相供電同一負載），但線圈迴路未互鎖——同時投入將相間短路。請將各線圈串接對方的 21-22。`);
+          if (aNeedsB && bNeedsA) pass('電氣互鎖', `${la} 與 ${lb} 線圈互經對方 21-22 b 接點，互鎖正確。`);
+          else err('缺電氣互鎖', `${la} 與 ${lb} 同時投入會相間短路（換相／星角），但線圈迴路未互鎖。請將各線圈串接對方的 21-22 b 接點。`);
         }
       }
     }
@@ -369,6 +486,9 @@ CF.Ind = (function () {
     st.running = true;
     st.coilPrev = {};
     st.log = [];
+    st.timerDone = {};
+    st.plcOut = {};
+    if (window.CF && CF.Plc) CF.Plc.reset();
     pushLog('通電。掃描求解器啟動（120ms／週期）。');
     st.timer = setInterval(tick, 120);
     return { ok: true };
@@ -377,9 +497,34 @@ CF.Ind = (function () {
     st.running = false;
     if (st.timer) { clearInterval(st.timer); st.timer = null; }
     st.live = null;
-    for (const p of st.parts) { p.energized = false; p.lit = false; p.run = false; }
+    st.timerDone = {};
+    st.plcOut = {};
+    setBuzz(false);
+    for (const p of st.parts) { p.energized = false; p.lit = false; p.run = false; p.tOn = null; p.powered = false; p.di = null; p.mode = null; }
     render();
     if (st.onSim) st.onSim();
+  }
+
+  /* 蜂鳴器音效（WebAudio） */
+  let audio = null;
+  function setBuzz(on) {
+    try {
+      if (on && !audio) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        g.gain.value = 0.05;
+        osc.type = 'square';
+        osc.frequency.value = 1568;
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start();
+        audio = { ctx, osc };
+      } else if (!on && audio) {
+        audio.osc.stop();
+        audio.ctx.close();
+        audio = null;
+      }
+    } catch (e) { audio = null; }
   }
   function pushLog(text) {
     st.log.push(text);
@@ -387,6 +532,21 @@ CF.Ind = (function () {
   }
 
   function tick() {
+    const now = Date.now();
+    // TR 計時（依上一掃描的線圈狀態累計）
+    for (const p of st.parts) {
+      const d = defOf(p);
+      if (!d.timed) continue;
+      if (p.energized) {
+        if (!p.tOn) p.tOn = now;
+        const done = now - p.tOn >= (p.preset || 3) * 1000;
+        if (done && !st.timerDone[p.uid]) pushLog(`${labelOf(p.uid, '').trim()} 計時到達 ⏱（${p.preset || 3}s）——55-56 開、67-68 閉`);
+        st.timerDone[p.uid] = done;
+      } else {
+        p.tOn = null;
+        st.timerDone[p.uid] = false;
+      }
+    }
     const r = solve(st.coilPrev);
     if (r.shorts.length) {
       pushLog('⚡ ' + r.shorts[0] + '——保護跳脫，已斷電！');
@@ -401,16 +561,47 @@ CF.Ind = (function () {
     for (const p of st.parts) {
       const d = defOf(p);
       const en = !!r.coil[p.uid];
-      if (d.coil && en !== !!p.energized) pushLog(`${d.label} ${en ? '吸持 🧲' : '釋放'}`);
+      if (d.coil && en !== !!p.energized) pushLog(`${labelOf(p.uid, '').trim()} ${en ? '吸持 🧲' : '釋放'}`);
       p.energized = en;
       if (d.load) p.lit = !!r.lit[p.uid];
       if (d.motor) {
         const run = !!r.motorRun[p.uid];
-        if (run !== !!p.run) pushLog(`馬達 ${run ? '運轉 ▶' : '停止 ■'}`);
+        const mode = d.motor6 ? (r.motorMode[p.uid] || null) : null;
+        if (run !== !!p.run) pushLog(`馬達 ${run ? '運轉 ▶' : '停止 ■'}${run && mode ? `（${mode === 'Y' ? 'Y 星形啟動' : 'Δ 三角形'}）` : ''}`);
+        else if (run && mode && mode !== p.mode) pushLog(`馬達切換 ${mode === 'Y' ? 'Y 星形' : 'Δ 三角形全壓'} 運轉 🔁`);
         p.run = run;
+        p.mode = mode;
         if (run) st.motorAngle += 0.5;
       }
     }
+    // PLC 掃描：讀輸入 → 執行梯形圖 → 寫輸出（輸出下一掃描生效）
+    for (const p of st.parts) {
+      const d = defOf(p);
+      if (!d.plc) continue;
+      const nL = r.uf.find(tid(p.uid, 'L')), nN = r.uf.find(tid(p.uid, 'N'));
+      const { nC1, nC2 } = r.nets;
+      const powered = nL !== nN && (nL === nC1 || nL === nC2) && (nN === nC1 || nN === nC2);
+      if (powered !== !!p.powered) {
+        pushLog(`PLC ${powered ? '上電 RUN ▶' : '失電 STOP ■'}`);
+        if (!powered && window.CF && CF.Plc) CF.Plc.reset();
+      }
+      p.powered = powered;
+      let out = {};
+      if (powered && window.CF && CF.Plc) {
+        const nCom = r.uf.find(tid(p.uid, 'COM'));
+        const xin = {};
+        for (let i = 0; i < 8; i++) xin['X' + i] = r.uf.find(tid(p.uid, 'X' + i)) === nCom;
+        p.di = xin;
+        out = CF.Plc.scan(xin, 120);
+      } else p.di = null;
+      const prev = st.plcOut[p.uid] || {};
+      for (let i = 0; i < 8; i++) {
+        const k = 'Y' + i;
+        if (!!out[k] !== !!prev[k]) pushLog(`PLC ${k} ${out[k] ? 'ON' : 'OFF'}`);
+      }
+      st.plcOut[p.uid] = out;
+    }
+    setBuzz(st.parts.some(p => defOf(p).buzzer && p.lit));
     st.coilPrev = r.coil;
     st.live = r;
     render();
@@ -566,6 +757,61 @@ CF.Ind = (function () {
       ctx.lineWidth = 3;
       for (let i = 0; i < 3; i++) { ctx.rotate(Math.PI * 2 / 3); ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, r - 6); ctx.stroke(); }
       ctx.restore();
+      if (d.motor6 && p.run && p.mode) {
+        ctx.fillStyle = '#3ddc84';
+        ctx.font = '700 14px monospace';
+        ctx.fillText(p.mode, cx + r + 8, cy + 5);
+      }
+    }
+    if (d.timed) {  // TR 倒數
+      const total = p.preset || 3;
+      const rem = p.tOn ? Math.max(0, total - (Date.now() - p.tOn) / 1000) : total;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = (st.timerDone && st.timerDone[p.uid]) ? '#3ddc84' : '#e8c97a';
+      ctx.font = '700 13px monospace';
+      ctx.fillText(`⏱ ${rem.toFixed(1)}s`, p.x + d.w / 2, p.y + d.h / 2 + 16);
+      ctx.font = '9px "Noto Sans TC", sans-serif';
+      ctx.fillStyle = 'rgba(242,244,246,.6)';
+      ctx.fillText(`設定 ${total}s・雙擊修改`, p.x + d.w / 2, p.y + d.h / 2 + 32);
+      ctx.textAlign = 'left';
+    }
+    if (d.selector) {  // COS 旋鈕
+      const cx = p.x + d.w / 2, cy = p.y + d.h / 2 + 4;
+      ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#2a2e33'; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.stroke();
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(p.on ? Math.PI / 5 : -Math.PI / 5);
+      ctx.strokeStyle = '#e8d9a0'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, -11); ctx.stroke();
+      ctx.restore();
+      ctx.font = '8px monospace';
+      ctx.fillStyle = p.on ? 'rgba(242,244,246,.4)' : '#e8d9a0';
+      ctx.fillText('A', cx - 22, cy - 8);
+      ctx.fillStyle = p.on ? '#e8d9a0' : 'rgba(242,244,246,.4)';
+      ctx.fillText('B', cx + 17, cy - 8);
+    }
+    if (d.plc) {  // PLC 面板：狀態螢幕＋X/Y LED
+      ctx.fillStyle = '#101820';
+      roundRect(ctx, p.x + 12, p.y + 44, 68, 42, 4); ctx.fill();
+      ctx.font = '700 12px monospace';
+      ctx.fillStyle = p.powered ? '#3ddc84' : '#5a646e';
+      ctx.fillText(st.running ? (p.powered ? 'RUN' : 'NO PWR') : 'STOP', p.x + 20, p.y + 62);
+      ctx.font = '8px monospace';
+      ctx.fillStyle = '#7a94ac';
+      ctx.fillText('雙擊開梯形圖', p.x + 18, p.y + 78);
+      ctx.font = '8px monospace';
+      ctx.fillStyle = 'rgba(242,244,246,.6)';
+      ctx.fillText('X', p.x + 90, p.y + 57);
+      ctx.fillText('Y', p.x + 90, p.y + 73);
+      const out = st.plcOut[p.uid] || {};
+      for (let i = 0; i < 8; i++) {
+        ctx.fillStyle = (p.di && p.di['X' + i]) ? '#ffb020' : '#31404e';
+        ctx.fillRect(p.x + 100 + i * 19, p.y + 50, 11, 7);
+        ctx.fillStyle = out['Y' + i] ? '#3ddc84' : '#31404e';
+        ctx.fillRect(p.x + 100 + i * 19, p.y + 66, 11, 7);
+      }
     }
 
     // 端子
@@ -682,13 +928,26 @@ CF.Ind = (function () {
   function onDbl(e) {
     const [x, y] = toLogical(e);
     const p = pickPart(x, y);
-    if (p && defOf(p).toggle) { p.on = !p.on; changed(); }
+    if (!p) return;
+    const d = defOf(p);
+    if (d.toggle || d.selector) {
+      p.on = !p.on;
+      if (st.running) render(); else changed();
+      return;
+    }
+    if (d.timed) {
+      const v = parseFloat(window.prompt(`${labelOf(p.uid, '').trim()} 設定秒數（1–60）`, p.preset || 3));
+      if (v >= 1 && v <= 60) { p.preset = Math.round(v * 10) / 10; if (st.running) render(); else changed(); }
+      return;
+    }
+    if (d.plc && st.onLadder) st.onLadder(p.uid);
   }
 
   /* ================= 操作 API ================= */
   function addPart(id) {
     const d = DEFS[id];
     if (!d) return { ok: false, error: '未知元件 ' + id };
+    if (d.single && st.parts.some(p => p.id === id)) return { ok: false, error: d.name + ' 只能放一顆' };
     const row = d.row;
     let x = 30;
     for (const p of st.parts) {
@@ -710,7 +969,11 @@ CF.Ind = (function () {
     { id: 'twolamp', name: '運轉／停止指示燈', desc: '綠燈並聯線圈、紅燈經 MC 的 21-22 b 接點，吸持與釋放互換點亮。' },
     { id: 'twoplace', name: '兩處啟動／停止', desc: '兩顆 STOP 串聯、兩顆 START 並聯——雙地點都能控制。' },
     { id: 'fwdrev', name: '正逆轉（電氣互鎖）', desc: '雙 MC 換相供電＋互鎖 b 接點；運轉中按反向不動作，STOP 後才能換向。' },
-    { id: 'seq', name: '順序啟動（兩台馬達）', desc: 'M2 啟動迴路取自 MC1 吸持節點，M1 未運轉時 M2 按了也不會動。' }
+    { id: 'seq', name: '順序啟動（兩台馬達）', desc: 'M2 啟動迴路取自 MC1 吸持節點，M1 未運轉時 M2 按了也不會動。' },
+    { id: 'ydelta', name: 'Y-Δ 降壓啟動（TR 計時）', desc: '三顆 MC＋TR 限時電驛：星形降壓啟動，計時到自動換三角形全壓運轉；MCS/MCD 互鎖。' },
+    { id: 'alarm', name: '過載警報（BZ＋紅燈）', desc: '自保持迴路＋TH-RY 97-98 a 接點：過載跳脫時馬達停、蜂鳴器響、紅燈亮。' },
+    { id: 'plc_selfhold', name: 'PLC 自保持（梯形圖）', desc: '按鈕接 PLC 輸入、Y0 驅動 MC：自保持邏輯寫在梯形圖裡，雙擊 PLC 開編輯器。' },
+    { id: 'plc_timer', name: 'PLC 延時啟動（TON）', desc: 'START 後綠燈先亮、TON 計時 3 秒才投入馬達——TR 限時電驛的程式化版本。' }
   ];
 
   function loadPreset(pid) {
@@ -792,6 +1055,61 @@ CF.Ind = (function () {
       W(GO1, '4', GO2, '3');
       W(GO2, '4', M2, 'A1'); W(M2, '13', GO2, '3'); W(M2, '14', GO2, '4');
       W(M2, 'A2', H2, '95'); W(H2, '96', S, 'C2');
+    } else if (pid === 'ydelta') {
+      const N = A('nfb'), MM = A('mc'), MS = A('mc'), MD = A('mc'), H = A('thry'), TR = A('tr');
+      const ST = A('pb_nc'), GO = A('pb_no'), MO = A('motor6');
+      // 主 MC：R/S/T → NFB → MCM → TH-RY → U1/V1/W1
+      W(S, 'R', N, '1'); W(S, 'S', N, '3'); W(S, 'T', N, '5');
+      W(N, '2', MM, '1'); W(N, '4', MM, '3'); W(N, '6', MM, '5');
+      W(MM, '2', H, '1'); W(MM, '4', H, '3'); W(MM, '6', H, '5');
+      W(H, '2', MO, 'U1'); W(H, '4', MO, 'V1'); W(H, '6', MO, 'W1');
+      // Δ MC：換相供 U2/V2/W2（U2←S、V2←T、W2←R，讓每組繞組吃到線電壓）
+      W(N, '2', MD, '1'); W(N, '4', MD, '3'); W(N, '6', MD, '5');
+      W(MD, '4', MO, 'U2'); W(MD, '6', MO, 'V2'); W(MD, '2', MO, 'W2');
+      // Y MC：U2/V2/W2 → MCS，出線側短接成星點
+      W(MO, 'U2', MS, '1'); W(MO, 'V2', MS, '3'); W(MO, 'W2', MS, '5');
+      W(MS, '2', MS, '4'); W(MS, '4', MS, '6');
+      // 控制：START 自保持 → MM＋TR；TR 55-56（延時b）→ MCS、67-68（延時a）→ MCD；MCS/MCD 互鎖
+      W(S, 'C1', ST, '1'); W(ST, '2', GO, '3'); W(GO, '4', MM, 'A1');
+      W(MM, '13', GO, '3'); W(MM, '14', GO, '4');
+      W(MM, 'A2', H, '95'); W(H, '96', S, 'C2');
+      W(GO, '4', TR, 'A1'); W(TR, 'A2', H, '95');
+      W(GO, '4', TR, '55'); W(TR, '56', MD, '21'); W(MD, '22', MS, 'A1'); W(MS, 'A2', H, '95');
+      W(GO, '4', TR, '67'); W(TR, '68', MS, '21'); W(MS, '22', MD, 'A1'); W(MD, 'A2', H, '95');
+    } else if (pid === 'alarm') {
+      const N = A('nfb'), M = A('mc'), H = A('thry'), ST = A('pb_nc'), GO = A('pb_no');
+      const PL = A('pl_g'), PR = A('pl_r'), BZ = A('bz'), MO = A('motor');
+      mainChain(N, M, H, MO);
+      W(S, 'C1', ST, '1'); W(ST, '2', GO, '3'); W(GO, '4', M, 'A1');
+      W(M, 'A2', H, '95'); W(H, '96', S, 'C2');
+      W(M, '13', GO, '3'); W(M, '14', GO, '4');
+      W(PL, 'X1', M, 'A1'); W(PL, 'X2', M, 'A2');
+      // 過載警報：TH-RY 97-98（跳脫時閉合）→ BZ＋紅燈
+      W(S, 'C1', H, '97'); W(H, '98', BZ, 'X1'); W(BZ, 'X2', S, 'C2');
+      W(H, '98', PR, 'X1'); W(PR, 'X2', S, 'C2');
+    } else if (pid === 'plc_selfhold' || pid === 'plc_timer') {
+      const N = A('nfb'), P = A('plc'), M = A('mc'), H = A('thry');
+      const ST = A('pb_nc'), GO = A('pb_no'), MO = A('motor');
+      const PL = pid === 'plc_timer' ? A('pl_g') : null;
+      mainChain(N, M, H, MO);
+      W(S, 'C1', P, 'L'); W(P, 'N', S, 'C2');            // PLC 電源
+      W(P, 'COM', GO, '3'); W(GO, '4', P, 'X0');         // START(a) → X0
+      W(P, 'COM', ST, '1'); W(ST, '2', P, 'X1');         // STOP(b) → X1（未按＝ON）
+      W(S, 'C1', P, 'C0'); W(P, 'Y0', M, 'A1');          // Y0 → MC 線圈
+      W(M, 'A2', H, '95'); W(H, '96', S, 'C2');
+      if (PL) { W(P, 'Y1', PL, 'X1'); W(PL, 'X2', S, 'C2'); }
+      if (window.CF && CF.Plc) {
+        CF.Plc.setProgram(pid === 'plc_selfhold'
+          ? { rungs: [
+              { cols: [[{ t: 'no', addr: 'X0' }, { t: 'no', addr: 'Y0' }], [{ t: 'no', addr: 'X1' }, null]], coil: { t: 'out', addr: 'Y0' } }
+            ] }
+          : { rungs: [
+              { cols: [[{ t: 'no', addr: 'X0' }, { t: 'no', addr: 'M0' }], [{ t: 'no', addr: 'X1' }, null]], coil: { t: 'out', addr: 'M0' } },
+              { cols: [[{ t: 'no', addr: 'M0' }, null]], coil: { t: 'ton', addr: 'T0', preset: 3 } },
+              { cols: [[{ t: 'no', addr: 'M0' }, null], [{ t: 'nc', addr: 'T0' }, null]], coil: { t: 'out', addr: 'Y1' } },
+              { cols: [[{ t: 'no', addr: 'T0' }, null]], coil: { t: 'out', addr: 'Y0' } }
+            ] });
+      }
     }
     changed();
     return { ok: true, preset: PRESETS.find(x => x.id === pid).name };
@@ -847,9 +1165,53 @@ CF.Ind = (function () {
       tags: ['CONTROL PANEL', '3Φ + 110V CTRL'],
       counts: { parts: st.parts.length, wires: st.wires.length },
       errN,
-      restUf: buildUF('all')
+      // 互鎖群組只閉合一顆 MC，避免相別著色被全閉假設短接汙染
+      restUf: (() => {
+        const tied = tiedMcGroup();
+        return buildUF('all', null, tied.length >= 2 ? { skipMainsUids: new Set(tied.slice(1)) } : undefined);
+      })()
     };
     return st.plan;
+  }
+
+  /* ================= 迴路圖 SVG ================= */
+  function genSvg() {
+    const escT = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const el = [];
+    el.push(`<rect x="8" y="8" width="${LW - 16}" height="${LH - 16}" rx="12" fill="#e8eaec" stroke="#c5cad0" stroke-width="2"/>`);
+    for (const y of ROW_Y) el.push(`<rect x="20" y="${y + 18}" width="${LW - 40}" height="14" fill="#cdd3d8"/>`);
+    const restUf = st.plan && st.plan.restUf;
+    const src = sourcePart();
+    for (const w of st.wires) {
+      const pa = termPos(byUid(w.a.uid), w.a.term), pb = termPos(byUid(w.b.uid), w.b.term);
+      if (!pa || !pb) continue;
+      const mx = (pa.x + pb.x) / 2;
+      const sag = Math.min(60, Math.abs(pa.x - pb.x) * 0.15 + Math.abs(pa.y - pb.y) * 0.1 + 18);
+      const my = Math.max(pa.y, pb.y) + sag;
+      let color = '#c98418';
+      if (pa.dom === 'main') {
+        color = '#7a4040';
+        if (restUf && src) {
+          const n = restUf.find(tid(w.a.uid, w.a.term));
+          if (n === restUf.find(tid(src.uid, 'R'))) color = '#c2402a';
+          else if (n === restUf.find(tid(src.uid, 'S'))) color = '#8a8f95';
+          else if (n === restUf.find(tid(src.uid, 'T'))) color = '#3b62c4';
+        }
+      }
+      el.push(`<path d="M ${pa.x} ${pa.y} Q ${mx} ${my} ${pb.x} ${pb.y}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round"/>`);
+    }
+    for (const p of st.parts) {
+      const d = defOf(p);
+      el.push(`<rect x="${p.x}" y="${p.y}" width="${d.w}" height="${d.h}" rx="8" fill="${d.color}" stroke="rgba(0,0,0,.3)" stroke-width="1.5"/>`);
+      el.push(`<text x="${p.x + d.w / 2}" y="${p.y + 22}" text-anchor="middle" fill="#f2f4f6" font-size="14" font-weight="700">${escT(labelOf(p.uid, '').trim())}</text>`);
+      for (const t of d.terms) {
+        const x = p.x + t.dx, y = p.y + t.dy;
+        el.push(`<circle cx="${x}" cy="${y}" r="5" fill="${t.dom === 'main' ? '#d8dce0' : '#ffd9a0'}" stroke="rgba(0,0,0,.4)"/>`);
+        el.push(`<text x="${x}" y="${t.dy === 0 ? y - 8 : t.dy >= d.h ? y + 16 : y - 8}" text-anchor="middle" fill="#3b4046" font-size="9">${escT(t.n)}</text>`);
+      }
+    }
+    el.push(`<text x="${LW - 24}" y="${LH - 20}" text-anchor="end" fill="#8a8f95" font-size="11">NemoClaw 電路實驗室 · 配電盤迴路圖</text>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${LW} ${LH}" font-family="'IBM Plex Mono',monospace">${el.join('')}</svg>\n`;
   }
 
   function genFiles() {
@@ -863,26 +1225,43 @@ CF.Ind = (function () {
     const cnt = {};
     for (const p of st.parts) cnt[p.id] = (cnt[p.id] || 0) + 1;
     for (const [id, n] of Object.entries(cnt)) bom.push(`${DEFS[id].name}  × ${n}`);
-    return [
+    const files = [
       { name: '接線表.txt', lang: 'txt', content: wiring.join('\n') + '\n' },
       { name: '元件表.txt', lang: 'txt', content: bom.join('\n') + '\n' },
-      { name: 'panel.json', lang: 'json', content: JSON.stringify(serialize(), null, 2) }
+      { name: '迴路圖.svg', lang: 'xml', content: genSvg() }
     ];
+    const plcP = st.parts.find(p => defOf(p).plc);
+    if (plcP && window.CF && CF.Plc) {
+      files.push({ name: 'program.st', lang: 'txt', content: CF.Plc.exportST() });
+      const io = ['# PLC IO 對照表', ''];
+      for (const t of defOf(plcP).terms) {
+        if (!/^[XY]\d$/.test(t.n)) continue;
+        const ends = st.wires
+          .filter(w => (w.a.uid === plcP.uid && w.a.term === t.n) || (w.b.uid === plcP.uid && w.b.term === t.n))
+          .map(w => (w.a.uid === plcP.uid && w.a.term === t.n) ? labelOf(w.b.uid, w.b.term) : labelOf(w.a.uid, w.a.term));
+        if (ends.length) io.push(`${t.n}  ${t.n[0] === 'X' ? '←' : '→'}  ${ends.join('、')}`);
+      }
+      files.push({ name: 'IO對照表.txt', lang: 'txt', content: io.join('\n') + '\n' });
+    }
+    files.push({ name: 'panel.json', lang: 'json', content: JSON.stringify(serialize(), null, 2) });
+    return files;
   }
 
   /* ================= 持久化 ================= */
   function serialize() {
     return {
-      parts: st.parts.map(p => ({ uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped })),
+      parts: st.parts.map(p => ({ uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped, preset: p.preset })),
       wires: st.wires.map(w => ({ a: w.a, b: w.b })),
-      uidSeq: st.uidSeq
+      uidSeq: st.uidSeq,
+      program: (window.CF && CF.Plc) ? CF.Plc.serialize() : null
     };
   }
   function restore(d) {
     if (!d || !d.parts) return;
-    st.parts = d.parts.filter(p => DEFS[p.id]).map(p => ({ uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped }));
+    st.parts = d.parts.filter(p => DEFS[p.id]).map(p => ({ uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped, preset: p.preset }));
     st.wires = (d.wires || []).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
     st.uidSeq = Math.max(d.uidSeq || 1, st.uidSeq);
+    if (d.program && window.CF && CF.Plc) CF.Plc.restoreProgram(d.program);
     changed();
   }
 
@@ -918,6 +1297,7 @@ CF.Ind = (function () {
       st.ctx = canvas.getContext('2d');
       st.onChange = hooks && hooks.onChange;
       st.onSim = hooks && hooks.onSim;
+      st.onLadder = hooks && hooks.onLadder;
       canvas.addEventListener('pointermove', onMove);
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('dblclick', onDbl);
@@ -944,6 +1324,75 @@ CF.Ind = (function () {
       const p = byUid(uid) || st.parts.find(x => x.id === 'nfb');
       if (p) { p.on = !p.on; if (!st.running) changed(); else render(); }
     },
+    toggleCos(uid) {
+      const p = byUid(uid) || st.parts.find(x => defOf(x).selector);
+      if (p) { p.on = !p.on; if (!st.running) changed(); else render(); return { ok: true, position: p.on ? 'B' : 'A' }; }
+      return { ok: false, error: '盤上沒有 COS 選擇開關' };
+    },
+    setTrPreset(uid, seconds) {
+      const p = byUid(uid) || st.parts.find(x => defOf(x).timed);
+      if (!p) return { ok: false, error: '盤上沒有 TR 限時電驛' };
+      const v = parseFloat(seconds);
+      if (!(v >= 1 && v <= 60)) return { ok: false, error: '秒數需在 1–60 之間' };
+      p.preset = Math.round(v * 10) / 10;
+      if (!st.running) changed(); else render();
+      return { ok: true, preset: p.preset };
+    },
+    /* Agent 用：以「標籤:端子」找端子（模糊容錯＋錯誤時列出可用值） */
+    resolveRef(s) {
+      const m = String(s || '').trim().match(/^(.+?)[\s:.\-–—]+([A-Za-z0-9]+)$/);
+      const partsList = this.getParts();
+      if (!m) return { error: `格式錯誤「${s}」——請用「元件標籤:端子」，例如 MC1:13、START:4、POWER:C1` };
+      const lbl = m[1].trim().toLowerCase().replace(/\s+/g, '');
+      const p = partsList.find(x => x.label.toLowerCase().replace(/\s+/g, '') === lbl)
+        || partsList.find(x => x.label.toLowerCase().replace(/\s+/g, '').startsWith(lbl));
+      if (!p) return { error: `找不到元件「${m[1]}」。目前盤上：${partsList.map(x => x.label).join('、')}` };
+      const t = p.def.terms.find(t => t.n.toLowerCase() === m[2].toLowerCase());
+      if (!t) return { error: `${p.label} 沒有端子「${m[2]}」。可用端子：${p.def.terms.map(t => t.n).join('、')}` };
+      return { uid: p.uid, term: t.n, label: p.label };
+    },
+    agentWire(from, to) {
+      const a = this.resolveRef(from), b = this.resolveRef(to);
+      if (a.error) return { ok: false, error: a.error };
+      if (b.error) return { ok: false, error: b.error };
+      if (a.uid === b.uid && a.term === b.term) return { ok: false, error: '兩端不能是同一個端子' };
+      st.wires.push({ uid: st.uidSeq++, a: { uid: a.uid, term: a.term }, b: { uid: b.uid, term: b.term } });
+      changed();
+      const errs = st.plan.checks.filter(c => c.status === 'error').map(c => c.name);
+      return { ok: true, wire: `${a.label} ${a.term} → ${b.label} ${b.term}`, erc_errors: errs };
+    },
+    agentUnwire(from, to) {
+      const a = this.resolveRef(from), b = this.resolveRef(to);
+      if (a.error) return { ok: false, error: a.error };
+      if (b.error) return { ok: false, error: b.error };
+      const idx = st.wires.findIndex(w =>
+        (w.a.uid === a.uid && w.a.term === a.term && w.b.uid === b.uid && w.b.term === b.term) ||
+        (w.a.uid === b.uid && w.a.term === b.term && w.b.uid === a.uid && w.b.term === a.term));
+      if (idx < 0) return { ok: false, error: '這兩個端子之間沒有接線' };
+      st.wires.splice(idx, 1);
+      changed();
+      return { ok: true };
+    },
+    agentStatus() {
+      const plan = st.plan || derive();
+      return {
+        running: st.running,
+        parts: this.getParts().map(p => ({
+          label: p.label, name: p.def.name,
+          terms: p.def.terms.map(t => t.n).join(','),
+          state: p.def.coil ? (p.energized ? '吸持' : '釋放')
+            : p.def.motor ? (p.run ? '運轉' : '停止')
+            : p.def.load ? (p.lit ? '亮' : '暗')
+            : p.def.toggle ? (p.on ? 'ON' : 'OFF')
+            : p.def.selector ? (p.on ? '位置B' : '位置A')
+            : p.def.trip ? (p.tripped ? '跳脫' : '正常')
+            : p.def.plc ? (p.powered ? 'RUN' : (st.running ? '未供電' : '停止')) : ''
+        })),
+        wires: st.wires.length,
+        checks: plan.checks.map(c => `${c.status.toUpperCase()}: ${c.name}`),
+        log_tail: st.log.slice(-8)
+      };
+    },
     tripThry(uid, tripped) {
       const p = byUid(uid) || st.parts.find(x => x.id === 'thry');
       if (p) {
@@ -957,7 +1406,7 @@ CF.Ind = (function () {
         const d = defOf(p);
         const same = st.parts.filter(q => q.id === p.id);
         const label = d.label + (same.length > 1 ? same.indexOf(p) + 1 : '');
-        return { uid: p.uid, id: p.id, def: d, label, pressed: p.pressed, on: p.on, tripped: p.tripped, energized: p.energized, lit: p.lit, run: p.run };
+        return { uid: p.uid, id: p.id, def: d, label, pressed: p.pressed, on: p.on, tripped: p.tripped, energized: p.energized, lit: p.lit, run: p.run, mode: p.mode, powered: p.powered, preset: p.preset };
       });
     }
   };

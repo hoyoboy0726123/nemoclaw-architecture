@@ -239,7 +239,12 @@
       }
     } else if (mode === 'ind') {
       if (!state.indInited) {
-        CF.Ind.init($('#indCanvas'), { onChange: () => refreshAll(), onSim: () => updateIndSimUi() });
+        CF.Ind.init($('#indCanvas'), {
+          onChange: () => refreshAll(),
+          onSim: () => updateIndSimUi(),
+          onLadder: () => openLadder()
+        });
+        if (CF.Plc) CF.Plc.setOnChange(() => { if (state.mode === 'ind') refreshAll(); });
         state.indInited = true;
         if (state.savedInd) {
           CF.Ind.restore(state.savedInd);
@@ -616,6 +621,16 @@
   }
 
   /* ---------------- 工業配線模擬面板 ---------------- */
+  function openLadder() {
+    if (!CF.Plc) return;
+    const hasPlc = CF.Ind.getParts().some(p => p.def.plc);
+    if (!hasPlc) {
+      const r = CF.Ind.addPart('plc');
+      if (!r.ok) { window.alert('無法加入 PLC：' + r.error); return; }
+    }
+    CF.Plc.openEditor();
+  }
+
   function renderIndSimPanel() {
     const host = $('#simBody');
     host.innerHTML = '';
@@ -662,8 +677,22 @@
       if (p.def.trip) {
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
-        b.textContent = '⚡ 模擬過載跳脫／復歸';
+        b.textContent = `⚡ ${p.label} 過載跳脫／復歸`;
         b.addEventListener('click', () => { CF.Ind.tripThry(p.uid); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
+      if (p.def.selector) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `🔀 ${p.label} 切換位置`;
+        b.addEventListener('click', () => { CF.Ind.toggleCos(p.uid); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
+      if (p.def.plc) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = '📋 開啟梯形圖';
+        b.addEventListener('click', () => openLadder());
         ops.appendChild(b);
       }
     }
@@ -715,10 +744,12 @@
     const chips = [];
     for (const p of CF.Ind.getParts()) {
       if (p.def.coil) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.energized ? 'on' : ''}">${p.energized ? '吸持 🧲' : '釋放'}</div></div>`);
-      if (p.def.motor) chips.push(`<div class="sim-out"><div class="k">MOTOR${p.label.replace(/\D/g, '')}</div><div class="sim-chipval ${p.run ? 'on' : ''}">${p.run ? 'RUN ▶' : 'STOP ■'}</div></div>`);
-      if (p.def.load) chips.push(`<div class="sim-out"><div class="k">${p.def.name.includes('綠') ? 'PL 綠' : 'PL 紅'}</div><div class="sim-led ${p.lit ? 'on' : ''}" style="margin:0 auto;${p.lit && p.def.lamp === '#3ddc84' ? 'background:#3ddc84;border-color:#1f8a4d;box-shadow:0 0 14px rgba(61,220,132,.8);' : ''}"></div></div>`);
-      if (p.def.toggle) chips.push(`<div class="sim-out"><div class="k">NFB</div><div class="sim-chipval ${p.on ? 'on' : ''}">${p.on ? 'ON' : 'OFF'}</div></div>`);
-      if (p.def.trip && p.tripped) chips.push(`<div class="sim-out"><div class="k">TH-RY</div><div class="sim-chipval" style="color:var(--amber)">TRIP ⚡</div></div>`);
+      if (p.def.motor) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.run ? 'on' : ''}">${p.run ? `RUN${p.mode ? ' ' + p.mode : ''} ▶` : 'STOP ■'}</div></div>`);
+      if (p.def.load) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-led ${p.lit ? 'on' : ''}" style="margin:0 auto;${p.lit ? `background:${p.def.lamp};border-color:rgba(0,0,0,.25);box-shadow:0 0 14px ${p.def.lamp};` : ''}"></div></div>`);
+      if (p.def.toggle) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.on ? 'on' : ''}">${p.on ? 'ON' : 'OFF'}</div></div>`);
+      if (p.def.selector) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval on">位置 ${p.on ? 'B' : 'A'}</div></div>`);
+      if (p.def.trip && p.tripped) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">TRIP ⚡</div></div>`);
+      if (p.def.plc) chips.push(`<div class="sim-out"><div class="k">PLC</div><div class="sim-chipval ${p.powered ? 'on' : ''}">${running ? (p.powered ? 'RUN ▶' : '未供電') : 'STOP ■'}</div></div>`);
     }
     refs.status.innerHTML = chips.join('') || '<div class="sim-note">尚無器件。</div>';
     refs.log.innerHTML = CF.Ind.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
@@ -838,6 +869,7 @@
       $('#indToolWire').classList.remove('active');
     });
     $('#indExample').addEventListener('click', () => CF.Ind.loadExample());
+    $('#indLadderBtn').addEventListener('click', () => openLadder());
     $('#indClear').addEventListener('click', () => CF.Ind.clear());
     // 左欄：工業模式經典迴路範例卡
     const ipHost = $('#indPresets');
