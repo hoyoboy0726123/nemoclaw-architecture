@@ -107,8 +107,9 @@
       description: '查詢單一元件的完整知識：腳位、工作電壓、選用理由、接法備註、替代方案。回答元件相關問題或動手前不確定接法時呼叫。',
       parameters: { type: 'object', properties: { part_id: { type: 'string', description: '元件 id，例如 dht11、pir、ecap、ldr' } }, required: ['part_id'] },
       run: a => {
-        const d = CF.PARTS[a.part_id];
-        if (!d) return { error: `未知元件 ${a.part_id}` };
+        const pid = CF.App.normalizePartId(a.part_id);
+        const d = pid && CF.PARTS[pid];
+        if (!d) return { error: `未知元件 ${a.part_id}，請用系統能力清單中的 part_id` };
         return {
           id: d.id, name: d.name, class: d.cls,
           pins: d.pins.map(p => p.n).join(', ') || '板載',

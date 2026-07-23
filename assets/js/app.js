@@ -759,7 +759,39 @@
     };
   }
 
+  /* 識別字正規化：模型常用別名/中文/不同大小寫，寬容接受、失敗時列出可用值 */
+  const PART_ALIAS = {
+    dht: 'dht11', dht22: 'dht11', hcsr501: 'pir', sr501: 'pir', sr04: 'hcsr04',
+    ssd1306: 'oled', lcd: 'lcd1602', neopixel: 'ws2812', ws2812b: 'ws2812',
+    pushbutton: 'button', potentiometer: 'pot', rotaryencoder: 'encoder',
+    sg90: 'servo', motor: 'servo', waterpump: 'pump', soilmoisture: 'soil',
+    cap: 'capacitor', electrolytic: 'ecap', photoresistor: 'ldr', thermistor: 'ntc',
+    slideswitch: 'switch', res: 'resistor', ov2640: 'camera'
+  };
+  function normalizePartId(x) {
+    if (!x) return null;
+    const s = String(x).trim().toLowerCase().replace(/[\s_\-－]/g, '');
+    if (CF.PARTS[s]) return s;
+    if (PART_ALIAS[s]) return PART_ALIAS[s];
+    const hit = Object.values(CF.PARTS).find(d =>
+      d.titleName.toLowerCase().replace(/[\s\-]/g, '') === s ||
+      d.name.toLowerCase().replace(/[\s\-]/g, '').includes(s) ||
+      (s.length >= 3 && d.id.includes(s)));
+    return hit ? hit.id : null;
+  }
+  function normalizeGpio(x, board) {
+    const raw = String(x || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (/^GPIO\d+$/.test(raw)) return 'GPIO ' + raw.slice(4);
+    if (/^IO\d+$/.test(raw)) return 'GPIO ' + raw.slice(2);
+    if (/^A\d+$/.test(raw)) return raw;
+    if (/^D\d+$/.test(raw)) return board.id === 'nano' ? raw : 'GPIO ' + raw.slice(1);
+    if (/^\d+$/.test(raw)) return board.id === 'nano' ? 'D' + raw : 'GPIO ' + raw;
+    return String(x).trim();
+  }
+  const partIdError = x => ({ ok: false, error: `無法辨識元件「${x}」。可用 part_id：${CF.PART_ORDER.filter(i => i !== 'camera').join('、')}、resistor、capacitor、ecap、diode、inductor、ldr、ntc、switch` });
+
   CF.App = {
+    normalizePartId,
     generateFromText(text) {
       state.reqText = text;
       setMode('view');
@@ -777,10 +809,20 @@
     setMode(mode) { setMode(mode); return { ok: true, mode }; },
     setSignalPin(partId, pinName, gpio) {
       if (state.mode !== 'view') return { ok: false, error: '改腳位工具僅適用於 3D 檢視模式；自由編輯請用接線工具' };
-      const net = state.plan.nets.find(n => !n.locked && n.partRef === partId && (!pinName || n.pinName === pinName));
-      if (!net) return { ok: false, error: `找不到 ${partId} 的可調訊號腳` };
-      const opts = CF.pinOptions(state.plan, net);
-      if (!opts.includes(gpio)) return { ok: false, error: `${gpio} 不可用，可選：${opts.join('、')}` };
+      const pid = normalizePartId(partId);
+      if (!pid) return partIdError(partId);
+      const pn = pinName ? String(pinName).trim().toUpperCase() : null;
+      const net = state.plan.nets.find(n => !n.locked && n.partRef === pid && (!pn || n.pinName.toUpperCase() === pn));
+      if (!net) {
+        const adjustable = state.plan.nets.filter(n => !n.locked).map(n => `${n.partRef}.${n.pinName}`);
+        return { ok: false, error: `找不到 ${pid} 的可調訊號腳。可調腳位：${adjustable.join('、') || '（無）'}` };
+      }
+      gpio = normalizeGpio(gpio, state.plan.board);
+      // 用完整腳位池驗證（UI 下拉僅顯示前幾個，agent 可用全部空腳）
+      const used = new Set(CF.usedSignalPins(state.plan));
+      used.delete(net.boardPin);
+      const free = net.pool.filter(p => !used.has(p));
+      if (!free.includes(gpio)) return { ok: false, error: `${gpio} 不可用，可選：${free.join('、')}` };
       state.pinOverrides[`${net.partRef}|${net.pinName}`] = gpio;
       CF.reassignPin(state.plan, net.id, gpio);
       state.files = CF.genFiles(state.plan);
@@ -790,17 +832,23 @@
       return { ok: true, changed: `${net.from} → ${gpio}` };
     },
     editorAddPart(partId) {
+      const pid = normalizePartId(partId);
+      if (!pid) return partIdError(partId);
       setMode('edit');
-      const r = CF.Editor.agentAddPart(partId);
+      const r = CF.Editor.agentAddPart(pid);
       return Object.assign(r, { state: planSummary(CF.Editor.getPlan()) });
     },
     editorRemovePart(partId) {
+      const pid = normalizePartId(partId);
+      if (!pid) return partIdError(partId);
       setMode('edit');
-      return CF.Editor.agentRemovePart(partId);
+      return CF.Editor.agentRemovePart(pid);
     },
     editorLoadPlan() {
       setMode('edit');
       CF.Editor.importPlan(state.plan);
+      $('#editBoardSel').value = CF.Editor.getState().boardId;
+      $('#editConnSel').value = CF.Editor.getState().conn;
       return planSummary(CF.Editor.getPlan());
     },
     editorClear() {
@@ -809,7 +857,14 @@
       return { ok: true };
     },
     getCode(fileName) {
-      const f = state.files.find(x => x.name === fileName) || state.files[0];
+      let f;
+      if (!fileName) f = state.files[0];
+      else {
+        const q = String(fileName).trim().toLowerCase();
+        f = state.files.find(x => x.name.toLowerCase() === q)
+          || state.files.find(x => x.name.toLowerCase().includes(q) || q.includes(x.name.toLowerCase().replace(/\.\w+$/, '')));
+        if (!f) return { ok: false, error: `沒有「${fileName}」這個檔案。可用檔案：${state.files.map(x => x.name).join('、')}` };
+      }
       return { file: f.name, content: f.content.length > 7000 ? f.content.slice(0, 7000) + '\n…(截斷)' : f.content };
     },
     sim(action, key, value, event) {
@@ -850,9 +905,19 @@
         return { ok: true, [k]: value, running: CF.Sim.state.running, note: CF.Sim.state.running ? '已生效，OLED／輸出會在下一個週期反映' : '已記錄；目前尚未通電，start 後生效' };
       }
       if (action === 'event') {
-        if (event === 'motion') CF.Sim.pulseMotion();
-        if (event === 'button') { CF.Sim.setButton(true); setTimeout(() => CF.Sim.setButton(false), 500); }
-        return { ok: true, event };
+        const plan = currentPlan();
+        const has = id => plan.parts.some(p => p.id === id);
+        if (event === 'motion') {
+          if (!has('pir')) return { ok: false, error: '此方案沒有 PIR，觸發 motion 不會有任何效果' };
+          CF.Sim.pulseMotion();
+        } else if (event === 'button') {
+          if (!has('button')) return { ok: false, error: '此方案沒有按鈕，觸發 button 不會有任何效果' };
+          CF.Sim.setButton(true);
+          setTimeout(() => CF.Sim.setButton(false), 500);
+        } else {
+          return { ok: false, error: `未知事件「${event}」，可用：motion、button` };
+        }
+        return { ok: true, event, running: CF.Sim.state.running };
       }
       return { ok: false, error: '未知動作' };
     },
