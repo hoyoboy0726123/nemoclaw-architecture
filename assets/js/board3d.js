@@ -627,13 +627,14 @@ CF.Board3D = (function () {
       }
     }
 
-    /* OLED 螢幕文字（貼合面板的仿射投影） */
-    if (scene.screen && scene.oledLines.length) {
+    /* OLED 螢幕文字（貼合面板的仿射投影）；模擬執行中改顯示即時模擬值 */
+    const oledSrc = (state.simOled && state.simOled.length ? state.simOled : scene.oledLines).slice(0, 2);
+    if (scene.screen && oledSrc.length) {
       const A = proj(scene.screen.tl), B = proj(scene.screen.tr), C = proj(scene.screen.bl);
       ctx.save();
       ctx.transform((B[0] - A[0]) / 100, (B[1] - A[1]) / 100, (C[0] - A[0]) / 50, (C[1] - A[1]) / 50, A[0], A[1]);
       ctx.font = '600 11px "IBM Plex Mono", monospace';
-      scene.oledLines.forEach((l, i) => {
+      oledSrc.forEach((l, i) => {
         ctx.fillStyle = '#7ee0f2';
         ctx.fillText(l[0], 8, 17 + i * 16);
         ctx.fillStyle = '#ffd23f';
@@ -751,6 +752,11 @@ CF.Board3D = (function () {
     },
     setOpts(o) {
       Object.assign(state.opts, o);
+      requestRender();
+    },
+    setOledLines(lines) {
+      // 模擬執行中傳入即時值；傳 null 恢復示意值
+      state.simOled = lines && lines.length ? lines : null;
       requestRender();
     },
     resetView() {

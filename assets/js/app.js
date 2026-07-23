@@ -400,6 +400,7 @@
             CF.Sim.setInput(inp.key, range.value);
             val.textContent = `${range.value}${inp.unit}`;
           });
+          refs.sliders[inp.key] = { range, val, unit: inp.unit };
           host.appendChild(el);
         }
       }
@@ -558,6 +559,8 @@
       else if (o.oled.length) scr.innerHTML = o.oled.map(l => `<div class="ol">${esc(l[0])}<b>${esc(l[1])}</b></div>`).join('');
       else scr.innerHTML = '<div class="ol">NEMOCLAW LAB READY</div>';
     });
+    // 3D 檢視的 OLED 同步顯示模擬即時值
+    if (CF.Board3D.setOledLines) CF.Board3D.setOledLines(state.mode === 'view' && S.running ? o.oled : null);
     set('lcd', el => {
       const scr = el.querySelector('[data-el]');
       if (!S.running) scr.innerHTML = '<div>— POWER OFF —</div>';
@@ -817,7 +820,14 @@
         return r.ok ? { ok: true, status: '模擬執行中' } : { ok: false, error: r.msg };
       }
       if (action === 'stop') { CF.Sim.stop(); updateSimUi(); return { ok: true }; }
-      if (action === 'set_input') { CF.Sim.setInput(key, value); return { ok: true, [key]: value }; }
+      if (action === 'set_input') {
+        CF.Sim.setInput(key, value);
+        const sl = state.simRefs && state.simRefs.sliders && state.simRefs.sliders[key];
+        if (sl) { sl.range.value = value; sl.val.textContent = `${value}${sl.unit}`; }
+        else return { ok: false, error: `此方案沒有 ${key} 這個輸入（請先 get_state 確認元件）` };
+        updateSimUi();
+        return { ok: true, [key]: value, running: CF.Sim.state.running, note: CF.Sim.state.running ? '已生效，OLED／輸出會在下一個週期反映' : '已記錄；目前尚未通電，start 後生效' };
+      }
       if (action === 'event') {
         if (event === 'motion') CF.Sim.pulseMotion();
         if (event === 'button') { CF.Sim.setButton(true); setTimeout(() => CF.Sim.setButton(false), 500); }
