@@ -11,8 +11,11 @@
     editorInited: false,
     indInited: false,
     savedInd: null,
+    subInited: false,
+    savedSub: null,
     simRefs: null,
     indRefs: null,
+    subRefs: null,
     pinOverrides: {},         // `${partId}|${pinName}` → gpio（跨重整保留腳位修改）
     lastGenText: null,
     savedEditor: null,        // 開機時從 IndexedDB 載入的編輯器快照
@@ -26,6 +29,7 @@
     CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
     if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
     if (state.indInited) CF.Store.set('ind', CF.Ind.serialize());
+    if (state.subInited) CF.Store.set('sub', CF.Sub.serialize());
   }
   function persist() {
     if (!state.booted || !window.CF.Store) return;
@@ -36,7 +40,7 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { clearTimeout(persistTimer); persistNow(); } });
 
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.mode === 'ind' ? CF.Ind.getPlan() : state.plan;
+  const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.mode === 'ind' ? CF.Ind.getPlan() : state.mode === 'sub' ? CF.Sub.getPlan() : state.plan;
 
   /* ---------------- 語法上色 ---------------- */
   function hlCpp(code) {
@@ -193,14 +197,16 @@
   function refreshAll() {
     const plan = currentPlan();
     if (!plan) return;
-    state.files = plan.industrial ? CF.Ind.genFiles() : CF.genFiles(plan);
+    state.files = plan.sub ? CF.Sub.genFiles() : plan.industrial ? CF.Ind.genFiles() : CF.genFiles(plan);
     if (state.activeFile >= state.files.length) state.activeFile = 0;
     renderStage(plan);
     renderCode();
     renderWiring(plan);
     renderChecks(plan);
     renderDocs(plan);
-    if (plan.industrial) {
+    if (plan.sub) {
+      renderSubSimPanel();
+    } else if (plan.industrial) {
       renderIndSimPanel();
     } else {
       CF.Sim.load(plan);
@@ -211,7 +217,7 @@
 
   /* ---------------- 模式切換 ---------------- */
   function setMode(mode) {
-    if (!['view', 'edit', 'ind'].includes(mode)) return;
+    if (!['view', 'edit', 'ind', 'sub'].includes(mode)) return;
     if (state.mode === mode) return;
     state.mode = mode;
     CF.Sim.stop();
@@ -219,14 +225,17 @@
     $('#modeViewBtn').classList.toggle('active', mode === 'view');
     $('#modeEditBtn').classList.toggle('active', mode === 'edit');
     $('#modeIndBtn').classList.toggle('active', mode === 'ind');
+    $('#modeSubBtn').classList.toggle('active', mode === 'sub');
     $('#viewToolbar').hidden = mode !== 'view';
     $('#editToolbar').hidden = mode !== 'edit';
     $('#indToolbar').hidden = mode !== 'ind';
-    $('#leftMcu').hidden = mode === 'ind';
+    $('#leftMcu').hidden = mode === 'ind' || mode === 'sub';
     $('#leftInd').hidden = mode !== 'ind';
+    $('#leftSub').hidden = mode !== 'sub';
     $('#stage3d').hidden = mode !== 'view';
     $('#stage2d').hidden = mode !== 'edit';
     $('#stageInd').hidden = mode !== 'ind';
+    $('#stageSub').hidden = mode !== 'sub';
     if (mode === 'edit') {
       if (!state.editorInited) {
         CF.Editor.init($('#editor2d'), { onChange: () => refreshAll() });
@@ -257,6 +266,20 @@
         }
       } else {
         CF.Ind.resize();
+      }
+    } else if (mode === 'sub') {
+      if (!state.subInited) {
+        CF.Sub.init($('#subCanvas'), {
+          onChange: () => refreshAll(),
+          onSim: () => updateSubSimUi()
+        });
+        state.subInited = true;
+        if (state.savedSub) {
+          CF.Sub.restore(state.savedSub);
+          state.savedSub = null;
+        }
+      } else {
+        CF.Sub.resize();
       }
     } else {
       CF.Board3D.setPlan(state.plan);
@@ -408,6 +431,7 @@
     host.innerHTML = '';
     state.simRefs = null;
     state.indRefs = null;
+    state.subRefs = null;
     if (!plan) return;
     const has = id => plan.parts.some(p => p.id === id);
     const refs = { sliders: {}, outs: {} };
@@ -642,6 +666,7 @@
     host.innerHTML = '';
     state.indRefs = null;
     state.simRefs = null;
+    state.subRefs = null;
     if (!state.indInited) return;
     // 面板重建會失去按鈕的 pointerup——把仍按著的 PB 全部放開，避免卡在按下狀態
     for (const p of CF.Ind.getParts()) if (p.def.momentary && p.pressed) CF.Ind.pressPB(p.uid, false);
@@ -871,6 +896,140 @@
     refs.log.scrollTop = refs.log.scrollHeight;
   }
 
+  /* ---------------- 變電所模擬面板 ---------------- */
+  function renderSubSimPanel() {
+    const host = $('#simBody');
+    host.innerHTML = '';
+    state.simRefs = null;
+    state.indRefs = null;
+    state.subRefs = null;
+    if (!state.subInited) return;
+    const sc = CF.Sub.getScenario();
+    if (!sc) return;
+    const refs = {};
+
+    const head = document.createElement('div');
+    head.className = 'sim-note';
+    head.textContent = sc.desc;
+    host.appendChild(head);
+
+    const taskBox = document.createElement('div');
+    taskBox.className = 'sub-task';
+    host.appendChild(taskBox);
+    refs.task = taskBox;
+
+    const opSec = document.createElement('div');
+    opSec.className = 'sim-sec';
+    opSec.textContent = 'OPERATE / 開關操作（也可直接點單線圖符號）';
+    host.appendChild(opSec);
+    const ops = document.createElement('div');
+    ops.className = 'sim-ev-row';
+    host.appendChild(ops);
+    for (const el of sc.elements) {
+      if (el.type !== 'cb' && el.type !== 'ds') continue;
+      const b = document.createElement('button');
+      b.className = 'sim-ev'; b.type = 'button';
+      b.dataset.sw = el.id;
+      b.title = el.label;
+      b.addEventListener('click', () => { CF.Sub.operate(el.id); });
+      ops.appendChild(b);
+    }
+    const rl = document.createElement('button');
+    rl.className = 'sim-ev'; rl.type = 'button';
+    rl.textContent = '↺ 重載情境';
+    rl.addEventListener('click', () => CF.Sub.loadScenario(sc.id));
+    ops.appendChild(rl);
+    refs.ops = ops;
+
+    const fkeys = Object.keys(sc.faults || {});
+    if (fkeys.length) {
+      const fSec = document.createElement('div');
+      fSec.className = 'sim-sec';
+      fSec.textContent = 'FAULT / 故障與保護演練';
+      host.appendChild(fSec);
+      const fRow = document.createElement('div');
+      fRow.className = 'sim-ev-row';
+      host.appendChild(fRow);
+      for (const k of fkeys) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `⚡ ${sc.faults[k].label} 故障`;
+        b.addEventListener('click', () => { const r = CF.Sub.injectFault(k); if (!r.ok) window.alert(r.error); });
+        fRow.appendChild(b);
+      }
+      const cbtn = document.createElement('button');
+      cbtn.className = 'sim-ev'; cbtn.type = 'button';
+      cbtn.textContent = '🔧 清除故障（修復完成）';
+      cbtn.addEventListener('click', () => { const r = CF.Sub.clearFault(); if (!r.ok) window.alert(r.error); });
+      fRow.appendChild(cbtn);
+      const dset = new Set();
+      for (const k of fkeys) if (sc.faults[k].primary) dset.add(sc.faults[k].primary);
+      for (const id of dset) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `💉 ${id} 拒動注入/清除`;
+        b.addEventListener('click', () => { CF.Sub.toggleDefect(id); });
+        fRow.appendChild(b);
+      }
+    }
+
+    const stSec = document.createElement('div');
+    stSec.className = 'sim-sec';
+    stSec.textContent = 'STATUS / 饋線受電';
+    host.appendChild(stSec);
+    const stat = document.createElement('div');
+    stat.className = 'sim-outs';
+    host.appendChild(stat);
+    refs.status = stat;
+
+    const shSec = document.createElement('div');
+    shSec.className = 'sim-sec';
+    shSec.textContent = 'SWITCHING ORDER / 操作票（自動記錄）';
+    host.appendChild(shSec);
+    const shBox = document.createElement('div');
+    shBox.className = 'sim-mqtt';
+    shBox.innerHTML = '<div class="sim-log" data-sheet></div>';
+    host.appendChild(shBox);
+    refs.sheet = shBox.querySelector('[data-sheet]');
+
+    const logSec = document.createElement('div');
+    logSec.className = 'sim-sec';
+    logSec.textContent = 'LOG / 事件紀錄';
+    host.appendChild(logSec);
+    const logBox = document.createElement('div');
+    logBox.className = 'sim-mqtt';
+    logBox.innerHTML = '<div class="sim-log" data-log></div>';
+    host.appendChild(logBox);
+    refs.log = logBox.querySelector('[data-log]');
+
+    state.subRefs = refs;
+    updateSubSimUi();
+  }
+
+  function updateSubSimUi() {
+    const refs = state.subRefs;
+    if (!refs || state.mode !== 'sub') return;
+    const s = CF.Sub.status();
+    if (!s.scenario) return;
+    $('#simStatus').textContent = s.task && s.task.done ? 'TASK ✓' : s.fault ? 'FAULT ⚡' : 'OPERATING';
+    refs.task.textContent = s.task ? `${s.task.done ? '✅ 任務完成' : '🎯 任務'}：${s.task.text}` : '（自由操作）';
+    refs.task.classList.toggle('done', !!(s.task && s.task.done));
+    for (const b of refs.ops.querySelectorAll('[data-sw]')) {
+      const sw = s.switches.find(x => x.id === b.dataset.sw);
+      if (!sw) continue;
+      b.textContent = `${sw.state === '合' ? '●' : sw.state === '分' ? '○' : '⚡'} ${sw.id} ${sw.state}${sw.defect ? ' 💉' : ''}`;
+      b.disabled = sw.state === '弧光損壞';
+    }
+    const chips = s.feeders.map(f => `<div class="sim-out"><div class="k">${esc(f.label)}</div><div class="sim-chipval ${f.live ? 'on' : ''}">${f.live ? '受電 ●' : '停電 ○'}</div></div>`);
+    if (s.fault) chips.push(`<div class="sim-out"><div class="k">故障中</div><div class="sim-chipval" style="color:var(--amber)">${esc(s.fault)} ⚡</div></div>`);
+    refs.status.innerHTML = chips.join('') || '<div class="sim-note">—</div>';
+    const sheet2 = CF.Sub.getSheet();
+    refs.sheet.innerHTML = sheet2.map(x => `<div class="lg-sys">${String(x.n).padStart(2, '0')}　${esc(x.text)}</div>`).join('') || '<div class="lg-sys">（尚無操作）</div>';
+    refs.sheet.scrollTop = refs.sheet.scrollHeight;
+    refs.log.innerHTML = CF.Sub.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
+    refs.log.scrollTop = refs.log.scrollHeight;
+  }
+
   function updateSimLog(log) {
     const refs = state.simRefs;
     if (!refs || !refs.log) return;
@@ -972,6 +1131,7 @@
     $('#modeViewBtn').addEventListener('click', () => { if (state.booted) setMode('view'); });
     $('#modeEditBtn').addEventListener('click', () => { if (state.booted) setMode('edit'); });
     $('#modeIndBtn').addEventListener('click', () => { if (state.booted) setMode('ind'); });
+    $('#modeSubBtn').addEventListener('click', () => { if (state.booted) setMode('sub'); });
 
     // 工業配線工具列
     $('#indToolWire').addEventListener('click', () => {
@@ -1018,6 +1178,39 @@
       g.appendChild(head);
       g.appendChild(body);
       ipHost.appendChild(g);
+    }
+
+    // 左欄：變電所情境卡（依難度分區，可摺疊）
+    const spHost = $('#subScenarios');
+    const SUB_TIERS = [
+      [1, '基本功：停送電順序', false],
+      [2, '雙母線／一次半斷路器', false],
+      [3, '保護協調與檢修隔離', true],
+      [4, '綜合演練', true]
+    ];
+    for (const [tier, title, collapsed] of SUB_TIERS) {
+      const list = CF.Sub.SCENARIOS.filter(s => s.tier === tier);
+      if (!list.length) continue;
+      const g = document.createElement('div');
+      g.className = 'ind-tier' + (collapsed ? ' collapsed' : '');
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'ind-tier-head';
+      head.innerHTML = `<span class="tri">▾</span>${title}<em>${list.length}</em>`;
+      const body = document.createElement('div');
+      body.className = 'ind-tier-body';
+      head.addEventListener('click', () => g.classList.toggle('collapsed'));
+      for (const sc of list) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'preset-card';
+        card.innerHTML = `<b>${sc.name}</b><span>${sc.desc}</span>`;
+        card.addEventListener('click', () => CF.Sub.loadScenario(sc.id));
+        body.appendChild(card);
+      }
+      g.appendChild(head);
+      g.appendChild(body);
+      spHost.appendChild(g);
     }
 
     const ipal = $('#indPalette');
@@ -1160,8 +1353,8 @@
     getState() {
       const plan = currentPlan();
       return {
-        mode: state.mode === 'ind' ? '工業配線' : state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）',
-        sim_running: state.mode === 'ind' ? (state.indInited && CF.Ind.isRunning()) : CF.Sim.state.running,
+        mode: state.mode === 'sub' ? '變電所單線圖' : state.mode === 'ind' ? '工業配線' : state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）',
+        sim_running: state.mode === 'sub' ? true : state.mode === 'ind' ? (state.indInited && CF.Ind.isRunning()) : CF.Sim.state.running,
         plan: planSummary(plan)
       };
     },
@@ -1301,6 +1494,7 @@
       const saved = await CF.Store.get('app');
       state.savedEditor = await CF.Store.get('editor');
       state.savedInd = await CF.Store.get('ind');
+      state.savedSub = await CF.Store.get('sub');
       if (saved && saved.reqText) {
         state.reqText = saved.reqText;
         state.pinOverrides = saved.pinOverrides || {};
@@ -1309,11 +1503,13 @@
       generate();
       if (saved && saved.mode === 'edit' && state.savedEditor) setMode('edit');
       else if (saved && saved.mode === 'ind' && state.savedInd) setMode('ind');
+      else if (saved && saved.mode === 'sub' && state.savedSub) setMode('sub');
     } catch (e) {
       // 還原資料損毀：丟棄壞存檔、回到乾淨的 3D 檢視，確保本次工作階段可用且能持久化
-      try { CF.Store.del && CF.Store.del('editor'); CF.Store.del && CF.Store.del('ind'); } catch (e2) { /* ignore */ }
+      try { CF.Store.del && CF.Store.del('editor'); CF.Store.del && CF.Store.del('ind'); CF.Store.del && CF.Store.del('sub'); } catch (e2) { /* ignore */ }
       state.savedEditor = null;
       state.savedInd = null;
+      state.savedSub = null;
       state.mode = 'view';
       try { generate(); } catch (e3) { /* 最後防線：保持頁面存活 */ }
     }

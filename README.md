@@ -33,6 +33,14 @@
 - **PLC 梯形圖編輯器**：常開／常閉接點、欄疊＝並聯、OUT／TON／CTU／RST 線圈，通電路徑即時亮線；掃描週期與配電盤求解器串接（Y 輸出驅動 MC 線圈）
 - **匯出**：接線表、元件表（BOM）、迴路圖 SVG、IEC 61131-3 結構化文字（program.st）、PLC IO 對照表
 
+## 變電所模式（單線圖・S/S 運轉操作）
+
+抽象層級從端子接線拉高到**單線圖**（一條線代表三相），練變電所值班員的運轉操作。11 個情境分四區：停送電順序、母線分段檢修、**雙母線倒母線演練**、母線故障復電、一次半斷路器（1½ CB）檢修、**保護協調**（主保護限時跳脫／拒動→後備越級）、主變隔離、環路解環、帶載拉 DS 事故重現、綜合演練。
+
+- **操作規則玩真的**：CB 可帶載開閉；DS 只能在無電流或等電位時操作——帶載拉 DS＝弧光事故（設備損壞）、合 DS 於兩個不同帶電系統＝非同期併聯事故
+- **保護協調**：故障注入→主保護 CB 限時跳脫；對主保護注入「拒動」→後備保護越級跳脫、停電範圍擴大
+- **操作票自動記錄**：每步操作（含事故）自動編號，匯出操作票 .txt＋單線圖 .svg＋情境 JSON；任務即時判定（含「全程不斷電」追蹤）
+
 ## 其他功能
 
 - **CODE**：`main.cpp`（MQTT／HTTP REST／Web Server／ESP32-CAM 串流＋Teachable Machine）、`platformio.ini`、`config.h`、`circuit.json`
@@ -53,6 +61,7 @@ assets/js/board3d.js  3D 麵包板渲染器（Canvas）
 assets/js/editor.js   2D 自由編輯器：連通圖（union-find）＋ ERC
 assets/js/industrial.js 工業配線模式：配電盤畫布＋受控接點求解器＋工配 ERC＋範例庫
 assets/js/plc.js      PLC 梯形圖引擎＋編輯器＋IEC 61131-3 ST 匯出
+assets/js/substation.js 變電所單線圖模式：連通求解＋DS/CB 操作規則＋保護協調＋操作票
 assets/js/sim.js      行為模擬器（規則與生成韌體語意一一對應）
 assets/js/zip.js      極簡 ZIP 打包器
 assets/js/app.js      UI 主控
