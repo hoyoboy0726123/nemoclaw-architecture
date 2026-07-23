@@ -126,7 +126,7 @@
       { t: '顯示', ids: ['oled', 'lcd1602'] },
       { t: '輸入', ids: ['button', 'encoder', 'pot'] },
       { t: '輸出／動作', ids: ['led', 'ws2812', 'buzzer', 'servo', 'relay', 'pump'] },
-      { t: '被動元件', ids: ['resistor'] }
+      { t: '被動元件', ids: ['resistor', 'capacitor', 'ecap', 'diode', 'inductor', 'ldr', 'ntc', 'switch'] }
     ];
     const pal = $('#partPalette');
     for (const group of PALETTE_GROUPS) {

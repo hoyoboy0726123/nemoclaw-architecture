@@ -202,11 +202,66 @@ CF.PARTS = {
   resistor: {
     id: 'resistor', name: '電阻', titleName: '電阻', cls: 'PASSIVE', needs5V: false,
     pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
-    libs: [],
-    values: [220, 330, 1000, 4700, 10000],
+    libs: [], conduct: 'always', defaultValue: '220Ω',
     why: '限流、分壓與上拉的基本元件；LED 迴路必須串聯限流電阻，否則會燒毀 LED 或 GPIO。',
-    pinNote: '串接於兩個節點之間（在編輯器點兩下可切換阻值）',
+    pinNote: '串接於兩個節點之間（點兩下自由輸入阻值）',
     alts: [['可變電阻', '需要現場微調阻值時使用'], ['排阻', '多路相同阻值時更省空間']]
+  },
+  capacitor: {
+    id: 'capacitor', name: '陶瓷電容', titleName: '陶瓷電容', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
+    libs: [], conduct: 'never', defaultValue: '100nF',
+    why: '去耦與濾波：貼近模組電源腳吸收雜訊、穩定供電。注意：電容不導通直流，不能拿來當電源路徑。',
+    pinNote: '跨接於電源與 GND 之間（去耦），點兩下改容值',
+    alts: [['電解電容', '大容量儲能緩衝'], ['MLCC 多顆並聯', '同時覆蓋高低頻雜訊']]
+  },
+  ecap: {
+    id: 'ecap', name: '電解電容', titleName: '電解電容', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: '+', t: 'P' }, { n: '−', t: 'P' }],
+    libs: [], conduct: 'never', defaultValue: '100µF', polarized: true,
+    why: '大容量儲能：伺服、馬達啟動瞬間防止電壓驟降。有極性——「＋」必須接高電位，反接會損壞甚至爆裂。',
+    pinNote: '＋ 接電源軌、− 接 GND，點兩下改容值',
+    alts: [['鉭質電容', '體積小、ESR 低，但更怕反接'], ['大容量 MLCC', '無極性、壽命長，容量單價高']]
+  },
+  diode: {
+    id: 'diode', name: '二極體', titleName: '二極體', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'A', t: 'P' }, { n: 'K', t: 'P' }],
+    libs: [], conduct: 'never', defaultValue: '1N4007', polarized: true,
+    why: '單向導通：電源反接保護、繼電器／馬達線圈的飛輪二極體（吸收反電動勢）。A＝陽極、K＝陰極。',
+    pinNote: '反接保護：K 接電源側；飛輪：跨接線圈兩端（K 朝電源）',
+    alts: [['1N5819 蕭特基', '順向壓降低（約 0.3V），適合低壓電路'], ['TVS 二極體', '突波與靜電保護專用']]
+  },
+  inductor: {
+    id: 'inductor', name: '電感', titleName: '電感', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
+    libs: [], conduct: 'always', defaultValue: '10mH',
+    why: '與電容組成 LC 濾波，抑制電源高頻雜訊；對直流近似導通、對高頻呈高阻抗。',
+    pinNote: '串接於電源路徑，點兩下改感值',
+    alts: [['磁珠', '體積小，專治高頻雜訊'], ['共模扼流圈', '抑制線對雜訊']]
+  },
+  ldr: {
+    id: 'ldr', name: '光敏電阻', titleName: '光敏電阻', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
+    libs: [], conduct: 'always', defaultValue: 'LDR 10k',
+    why: '亮度改變阻值：與定值電阻串成分壓，中點接類比腳即可讀光線強弱，是最便宜的光感方案。',
+    pinNote: '與電阻分壓：一端接電源、另一端接電阻再到 GND，中點接類比腳',
+    alts: [['BH1750', '數位 I2C、直接輸出 lux'], ['光電晶體', '反應更快，適合脈衝偵測']]
+  },
+  ntc: {
+    id: 'ntc', name: 'NTC 熱敏電阻', titleName: 'NTC', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
+    libs: [], conduct: 'always', defaultValue: 'NTC 10k',
+    why: '溫度升高阻值下降：分壓後接類比腳可讀溫度，常見於電池與電源的過溫保護。',
+    pinNote: '與電阻分壓後接類比腳',
+    alts: [['DS18B20', '數位輸出、免校正曲線'], ['PT100', '工業精度，需專用轉換器']]
+  },
+  switch: {
+    id: 'switch', name: '滑動開關', titleName: '滑動開關', cls: 'PASSIVE', needs5V: false,
+    pins: [{ n: 'T1', t: 'P' }, { n: 'T2', t: 'P' }],
+    libs: [], conduct: 'switch', defaultValue: 'ON',
+    why: '實體通斷電路的總開關。在編輯器點兩下切換 ON／OFF，ERC 會立即反映整條路徑的通斷。',
+    pinNote: '串接於要控制的路徑上，點兩下切換 ON／OFF',
+    alts: [['按鈕', '瞬時觸發，放開即斷'], ['繼電器', '由程式控制的電子開關']]
   }
 };
 
@@ -384,7 +439,14 @@ CF.FOOTPRINTS = {
   pot:     { w: 3, color: '#356bab' },
   ws2812:  { w: 3, bodyW: 9, color: '#3a3a46' },
   pump:    { w: 3, bodyW: 5, color: '#2b6fa8' },
-  resistor: { w: 2, color: '#c9a06a', passive: true }
+  resistor: { w: 2, color: '#c9a06a', passive: true },
+  capacitor: { w: 2, color: '#c98f3c', passive: true },
+  ecap:      { w: 2, color: '#3f5f9e', passive: true },
+  diode:     { w: 2, color: '#3a3a3a', passive: true },
+  inductor:  { w: 2, color: '#7a6c3f', passive: true },
+  ldr:       { w: 2, color: '#8a5a2c', passive: true },
+  ntc:       { w: 2, color: '#5c4a7a', passive: true },
+  switch:    { w: 2, color: '#5f6b70', passive: true }
 };
 
 /* ---------------- 行為模擬器：虛擬感測器輸入 ---------------- */

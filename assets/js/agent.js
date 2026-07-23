@@ -103,6 +103,24 @@
       run: () => CF.App.editorClear()
     },
     {
+      name: 'get_part_info',
+      description: '查詢單一元件的完整知識：腳位、工作電壓、選用理由、接法備註、替代方案。回答元件相關問題或動手前不確定接法時呼叫。',
+      parameters: { type: 'object', properties: { part_id: { type: 'string', description: '元件 id，例如 dht11、pir、ecap、ldr' } }, required: ['part_id'] },
+      run: a => {
+        const d = CF.PARTS[a.part_id];
+        if (!d) return { error: `未知元件 ${a.part_id}` };
+        return {
+          id: d.id, name: d.name, class: d.cls,
+          pins: d.pins.map(p => p.n).join(', ') || '板載',
+          needs_5v: !!d.needs5V,
+          i2c_addr: d.addr || null,
+          why: d.why, wiring_note: d.pinNote || null,
+          alternatives: (d.alts || []).map(x => `${x[0]}：${x[1]}`),
+          conduct: d.conduct || null, polarized: !!d.polarized, default_value: d.defaultValue || null
+        };
+      }
+    },
+    {
       name: 'get_code',
       description: '取得目前方案生成的程式碼內容。',
       parameters: { type: 'object', properties: { file_name: { type: 'string', description: 'main.cpp / platformio.ini / config.h / circuit.json，省略為 main.cpp' } } },
@@ -148,8 +166,16 @@
       '',
       '【可用能力，嚴格限制】',
       '開發板：esp32（ESP32 DevKit V1）、esp32cam（AI Thinker ESP32-CAM，含 OV2640 相機）、nano（Arduino Nano，無 WiFi）。',
-      `元件（part_id）：${parts}、resistor（電阻，僅自由編輯）。`,
+      `元件（part_id）：${parts}。`,
+      '被動元件（僅自由編輯模式，點兩下可改規格值）：resistor（電阻）、capacitor（陶瓷電容）、ecap（電解電容，有極性）、diode（二極體，有方向）、inductor（電感）、ldr（光敏電阻）、ntc（熱敏電阻）、switch（滑動開關，可切 ON/OFF）。電容與二極體不導通直流，ERC 會如實反映。',
       '連線方式：MQTT、HTTP REST、Web Server、Teachable Machine（僅 ESP32 系列可連網）。',
+      '',
+      '【開發板要點】',
+      'esp32（DevKit V1）：3.3V 邏輯；感測預設由 3V3 供電，需 5V 的元件（PIR、伺服、繼電器、HC-SR04、MQ-2、水泵、WS2812、LCD1602）會改走 VIN 5V；類比讀值用 GPIO 32–35（0–4095）；GPIO 0/2/12/15 是開機腳位避免佔用；I2C 預設 SDA=GPIO 21、SCL=GPIO 22。腳位最充裕，元件多就選它。',
+      'esp32cam（AI Thinker）：相機占走大部分內部腳位，可自由使用的只有 GPIO 13/14/15（GPIO 4 是板載閃光燈）——最多再接一兩個簡單元件（如 PIR）；5V 供電；適合影像類應用（拍照、串流、Teachable Machine）。',
+      'nano（Arduino Nano）：無 WiFi，凡是要 MQTT/HTTP/連網的需求一律建議改用 esp32；5V 邏輯；I2C 固定 A4(SDA)/A5(SCL)；類比 A0–A7（0–1023）；適合離線的顯示、警報、伺服小專案。',
+      '',
+      '【電路常識】LED 必須串 220Ω 限流電阻；LDR/NTC 要與定值電阻分壓後接類比腳；電解電容「＋」接高電位、二極體 K 朝電源側做反接保護；模組電源腳旁可加 100nF 陶瓷電容去耦；水泵/大電流負載要經繼電器或 MOSFET，不可由 GPIO 直接驅動。不確定某元件細節時先呼叫 get_part_info。',
       '',
       '【行為守則】',
       '1. 使用者要求的功能若能用上述元件組合實現，就用工具直接完成；若超出範圍（如 GPS、藍牙、4G、資料庫、螢幕觸控等），明確回答「目前的元件庫無法實現」並說明缺什麼，切勿硬做或假裝完成。',
