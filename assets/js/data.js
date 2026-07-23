@@ -280,6 +280,7 @@ CF.CONNS = {
 CF.RULES = {
   board: [
     { re: /esp32[\s-]?cam|esp[\s-]?cam|ai\s?thinker/i, board: 'esp32cam' },
+    { re: /esp[\s-]?32/i, board: 'esp32' },
     { re: /nano|arduino/i, board: 'nano' }
   ],
   parts: {

@@ -33,6 +33,7 @@
     if (!window.CF || !CF.Store) return;
     const saved = await CF.Store.get('chat');
     if (!saved || !saved.display || !saved.display.length) return;
+    if (st.busy || st.history.length) return;   // 使用者已搶先開聊：不要覆蓋進行中的對話
     st.history = saved.history || [];
     st.display = saved.display;
     for (const e of st.display) {
@@ -372,6 +373,7 @@
     if (!getKey()) { toggleSettings(true); note('請先輸入 Google API Key 啟用助手（金鑰只存在你的瀏覽器）。'); return; }
     st.busy = true;
     setBusyUi(true);
+    st.history = trimHistory(st.history, 40);   // 記憶體內也修剪，避免長對話無限成長
     addMsg('user', userText);
     st.history.push({ role: 'user', parts: [{ text: userText }] });
     try {
@@ -379,12 +381,26 @@
       for (;;) {
         const r = await callModel(st.history);
         st.history.push(r.content);
-        if (r.functionCalls.length && rounds < MAX_TOOL_ROUNDS) {
+        if (r.functionCalls.length) {
+          if (rounds >= MAX_TOOL_ROUNDS) {
+            // 補上對應的 functionResponse 讓歷史保持平衡（否則之後每次請求都會 400）
+            st.history.push({
+              role: 'user',
+              parts: r.functionCalls.map(fc => ({ functionResponse: { name: fc.name, response: { result: { error: `已達單輪工具呼叫上限（${MAX_TOOL_ROUNDS}）` } } } }))
+            });
+            addMsg('agent', (r.text ? r.text + '\n' : '') + '⚠ 這一輪的工具呼叫已達上限，先停在這裡——請再下一句指令讓我接著做。');
+            break;
+          }
           rounds++;
           const responses = [];
           for (const fc of r.functionCalls) {
             addToolChip(fc.name);
-            const result = await runTool(fc.name, fc.args);
+            let result = await runTool(fc.name, fc.args);
+            // 過大的工具結果截斷後再進歷史（避免灌爆 token 與存檔）
+            try {
+              const raw = JSON.stringify(result);
+              if (raw && raw.length > 6000) result = { truncated: true, note: '結果過長，已截斷', preview: raw.slice(0, 6000) };
+            } catch (e2) { result = { error: '工具結果無法序列化' }; }
             responses.push({ functionResponse: { name: fc.name, response: { result } } });
           }
           st.history.push({ role: 'user', parts: responses });
@@ -394,10 +410,13 @@
         break;
       }
     } catch (e) {
-      let msg = String(e.message || e);
-      if (/API 400/.test(msg) && /API key/i.test(msg)) msg = 'API Key 無效，請檢查後重新輸入。';
-      if (/API 40[13]/.test(msg)) msg = 'API Key 無效或無權限，請檢查後重新輸入。';
-      if (/API 429/.test(msg)) msg = '已達免費層速率上限，稍等一下再試。';
+      let msg = String((e && e.message) || e);
+      const code = (e && (e.status || e.code)) || (msg.match(/\b(400|401|403|429|500|503)\b/) || [])[1];
+      if (String(code) === '429') msg = '已達免費層速率上限，稍等一下再試。';
+      else if (String(code) === '401' || String(code) === '403') msg = 'API Key 無效或無權限，請檢查後重新輸入（⚙ 設定）。';
+      else if (String(code) === '400' && /api key/i.test(msg)) msg = 'API Key 無效，請檢查後重新輸入。';
+      else if (String(code) === '503' || String(code) === '500') msg = '模型服務暫時無法回應，稍後再試。';
+      else if (msg.length > 260) msg = msg.slice(0, 260) + '…';
       addMsg('agent', '⚠ ' + msg);
     } finally {
       st.busy = false;

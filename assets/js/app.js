@@ -21,15 +21,19 @@
 
   /* ---------------- 持久化（IndexedDB） ---------------- */
   let persistTimer = null;
+  function persistNow() {
+    if (!state.booted || !window.CF.Store) return;
+    CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
+    if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
+    if (state.indInited) CF.Store.set('ind', CF.Ind.serialize());
+  }
   function persist() {
     if (!state.booted || !window.CF.Store) return;
     clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => {
-      CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
-      if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
-      if (state.indInited) CF.Store.set('ind', CF.Ind.serialize());
-    }, 400);
+    persistTimer = setTimeout(persistNow, 400);
   }
+  // 關頁／切背景時立即落盤，避免 debounce 期間的最後修改遺失
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { clearTimeout(persistTimer); persistNow(); } });
 
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.mode === 'ind' ? CF.Ind.getPlan() : state.plan;
@@ -207,6 +211,7 @@
 
   /* ---------------- 模式切換 ---------------- */
   function setMode(mode) {
+    if (!['view', 'edit', 'ind'].includes(mode)) return;
     if (state.mode === mode) return;
     state.mode = mode;
     CF.Sim.stop();
@@ -402,6 +407,7 @@
     const host = $('#simBody');
     host.innerHTML = '';
     state.simRefs = null;
+    state.indRefs = null;
     if (!plan) return;
     const has = id => plan.parts.some(p => p.id === id);
     const refs = { sliders: {}, outs: {} };
@@ -635,7 +641,10 @@
     const host = $('#simBody');
     host.innerHTML = '';
     state.indRefs = null;
+    state.simRefs = null;
     if (!state.indInited) return;
+    // 面板重建會失去按鈕的 pointerup——把仍按著的 PB 全部放開，避免卡在按下狀態
+    for (const p of CF.Ind.getParts()) if (p.def.momentary && p.pressed) CF.Ind.pressPB(p.uid, false);
     const refs = {};
 
     const powerRow = document.createElement('div');
@@ -661,9 +670,12 @@
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
         b.textContent = `⬇ 按住 ${p.label}`;
-        b.addEventListener('pointerdown', () => { CF.Ind.pressPB(p.uid, true); b.classList.add('held'); });
         const up = () => { CF.Ind.pressPB(p.uid, false); b.classList.remove('held'); };
-        b.addEventListener('pointerup', up);
+        b.addEventListener('pointerdown', () => {
+          CF.Ind.pressPB(p.uid, true);
+          b.classList.add('held');
+          window.addEventListener('pointerup', up, { once: true });   // 面板重建也放得開
+        });
         b.addEventListener('pointerleave', up);
         ops.appendChild(b);
       }
@@ -956,9 +968,10 @@
     $('#helpOverlay').addEventListener('click', e => { if (e.target === $('#helpOverlay')) $('#helpOverlay').hidden = true; });
     document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#helpOverlay').hidden = true; });
 
-    $('#modeViewBtn').addEventListener('click', () => setMode('view'));
-    $('#modeEditBtn').addEventListener('click', () => setMode('edit'));
-    $('#modeIndBtn').addEventListener('click', () => setMode('ind'));
+    // 開機還原（IndexedDB await）完成前先不切模式，避免競態蓋掉已存檔的工作
+    $('#modeViewBtn').addEventListener('click', () => { if (state.booted) setMode('view'); });
+    $('#modeEditBtn').addEventListener('click', () => { if (state.booted) setMode('edit'); });
+    $('#modeIndBtn').addEventListener('click', () => { if (state.booted) setMode('ind'); });
 
     // 工業配線工具列
     $('#indToolWire').addEventListener('click', () => {
@@ -1147,8 +1160,8 @@
     getState() {
       const plan = currentPlan();
       return {
-        mode: state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）',
-        sim_running: CF.Sim.state.running,
+        mode: state.mode === 'ind' ? '工業配線' : state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）',
+        sim_running: state.mode === 'ind' ? (state.indInited && CF.Ind.isRunning()) : CF.Sim.state.running,
         plan: planSummary(plan)
       };
     },
@@ -1214,6 +1227,7 @@
       return { file: f.name, content: f.content.length > 7000 ? f.content.slice(0, 7000) + '\n…(截斷)' : f.content };
     },
     sim(action, key, value, event) {
+      if (state.mode === 'ind') return { ok: false, error: '工業模式請改用 ind_control（start/stop/press…）操作配電盤模擬' };
       if (action === 'start') {
         document.querySelector('.tab[data-tab="sim"]').click();
         const r = CF.Sim.start();
@@ -1296,7 +1310,12 @@
       if (saved && saved.mode === 'edit' && state.savedEditor) setMode('edit');
       else if (saved && saved.mode === 'ind' && state.savedInd) setMode('ind');
     } catch (e) {
-      generate();
+      // 還原資料損毀：丟棄壞存檔、回到乾淨的 3D 檢視，確保本次工作階段可用且能持久化
+      try { CF.Store.del && CF.Store.del('editor'); CF.Store.del && CF.Store.del('ind'); } catch (e2) { /* ignore */ }
+      state.savedEditor = null;
+      state.savedInd = null;
+      state.mode = 'view';
+      try { generate(); } catch (e3) { /* 最後防線：保持頁面存活 */ }
     }
     state.booted = true;
     persist();
