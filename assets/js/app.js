@@ -5,8 +5,9 @@
   const state = {
     plan: null,               // 自動模式方案
     mode: 'view',             // view | edit
+    reqText: CF.DEFAULT_REQ,  // 目前需求語句（下拉/chips/Agent 設定）
     files: [], activeFile: 0, activeTab: 'code',
-    reqIndex: 0, pinLabels: true, panMode: false,
+    pinLabels: true, panMode: false,
     editorInited: false,
     simRefs: null
   };
@@ -66,9 +67,12 @@
         b.className = `chip chip-${group.style}`;
         b.textContent = c.label;
         b.addEventListener('click', () => {
-          const ta = $('#reqInput');
-          if (group.append) ta.value = ta.value.trim() ? ta.value.trim() + ' + ' + c.text : `ESP32 + ${c.text}，透過 MQTT 回報數據`;
-          else ta.value = c.text;
+          if (group.append) {
+            const base = state.plan ? state.plan.spec.text : 'ESP32';
+            state.reqText = `${base} + ${c.text}`;
+          } else {
+            state.reqText = c.text;
+          }
           setMode('view');
           generate();
         });
@@ -76,6 +80,28 @@
       }
       if (group.id !== 'quick') groupsEl.appendChild(host);
     }
+
+    // 快速生成下拉選單（彙整全部案例）
+    const sel = $('#quickGen');
+    for (const group of CF.CASE_GROUPS) {
+      if (group.append) continue;
+      const og = document.createElement('optgroup');
+      og.label = group.title || '快速方案';
+      for (const c of group.cases) {
+        const o = document.createElement('option');
+        o.value = c.text;
+        o.textContent = c.label;
+        og.appendChild(o);
+      }
+      sel.appendChild(og);
+    }
+    sel.addEventListener('change', () => {
+      if (!sel.value) return;
+      state.reqText = sel.value;
+      setMode('view');
+      generate();
+      sel.selectedIndex = 0;   // 還原提示文字，方便下次選擇
+    });
     $('#supportedList').textContent = CF.SUPPORTED.join(' · ');
     $('#supportedCount').textContent = `SUPPORTED / ${CF.SUPPORTED.length}`;
 
@@ -124,10 +150,8 @@
 
   /* ---------------- 產生（自動模式） ---------------- */
   function generate() {
-    const spec = CF.parseRequirement($('#reqInput').value);
+    const spec = CF.parseRequirement(state.reqText);
     state.plan = CF.buildPlan(spec);
-    state.reqIndex++;
-    $('#reqTag').textContent = 'REQ.' + String(state.reqIndex).padStart(3, '0');
     if (state.mode === 'view') CF.Board3D.setPlan(state.plan);
     refreshAll();
   }
@@ -602,11 +626,6 @@
 
   /* ---------------- 事件 ---------------- */
   function bind() {
-    $('#generateBtn').addEventListener('click', () => { setMode('view'); generate(); });
-    $('#reqInput').addEventListener('keydown', e => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { setMode('view'); generate(); }
-    });
-
     $('#modeViewBtn').addEventListener('click', () => setMode('view'));
     $('#modeEditBtn').addEventListener('click', () => setMode('edit'));
 
@@ -699,7 +718,7 @@
 
   CF.App = {
     generateFromText(text) {
-      $('#reqInput').value = text;
+      state.reqText = text;
       setMode('view');
       generate();
       return planSummary(state.plan);
@@ -779,7 +798,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     buildLeftPanel();
     CF.Board3D.init($('#board3d'));
-    $('#reqInput').value = CF.DEFAULT_REQ;
     bind();
     generate();
   });
