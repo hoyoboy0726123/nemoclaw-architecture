@@ -21,6 +21,10 @@ window.CF = window.CF || {};
       if (r.re.test(t)) { spec.conn = r.conn; break; }
     }
 
+    // LCD 與 OLED 同時命中且未明確指名 OLED → 以 LCD 為準（「顯示」一詞兩者皆中）
+    if (spec.parts.includes('lcd1602') && spec.parts.includes('oled') && !/oled|ssd1306/i.test(t)) {
+      spec.parts = spec.parts.filter(p => p !== 'oled');
+    }
     // Teachable Machine 一定是 ESP32-CAM
     if (spec.conn === 'tm') spec.boardId = 'esp32cam';
     // ESP32-CAM 必含相機；相機關鍵字（拍照/影像）在一般板子上不成立

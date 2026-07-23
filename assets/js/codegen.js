@@ -88,6 +88,42 @@ window.CF = window.CF || {};
       jsonF.push({ k: 'soil', fmt: '%d', arg: 'valSoil' });
       oledF.push({ label: 'SOIL ', arg: 'valSoil', digits: -1, unit: '' });
     }
+    if (P('ds18b20')) {
+      inc.push('#include <OneWire.h>', '#include <DallasTemperature.h>');
+      defs.push(`#define DS18B20_PIN ${pinVal(macroPin(plan, 'DS18B20_PIN'))}`, 'OneWire oneWire(DS18B20_PIN);', 'DallasTemperature ds18b20(&oneWire);');
+      globals.push('float valWaterTemp = 0;');
+      setup.push('  ds18b20.begin();');
+      timed.push('  ds18b20.requestTemperatures();', '  valWaterTemp = ds18b20.getTempCByIndex(0);');
+      jsonF.push({ k: 'water_temp', fmt: '%.1f', arg: 'valWaterTemp' });
+      oledF.push({ label: 'WTR  ', arg: 'valWaterTemp', digits: 1, unit: ' C' });
+    }
+    if (P('mpu6050')) {
+      needWire();
+      inc.push('#include <Adafruit_MPU6050.h>');
+      defs.push('Adafruit_MPU6050 mpu;');
+      globals.push('float valAccel = 0;');
+      setup.push('  if (!mpu.begin()) Serial.println("[MPU6050] not found, check wiring");');
+      timed.push('  sensors_event_t a, g, t;', '  mpu.getEvent(&a, &g, &t);',
+        '  valAccel = sqrt(a.acceleration.x * a.acceleration.x +',
+        '                  a.acceleration.y * a.acceleration.y +',
+        '                  a.acceleration.z * a.acceleration.z);');
+      jsonF.push({ k: 'accel', fmt: '%.2f', arg: 'valAccel' });
+      oledF.push({ label: 'ACC  ', arg: 'valAccel', digits: 1, unit: '' });
+      if (P('buzzer')) defs.push('#define ACCEL_ALERT 15.0  // 震動警報門檻 (m/s2)');
+    }
+    if (P('mq2')) {
+      defs.push(`#define MQ2_PIN ${pinVal(macroPin(plan, 'MQ2_PIN'))}`, `#define SMOKE_ALERT ${esp32 ? 2200 : 550}  // 煙霧警報門檻（類比原始值）`);
+      globals.push('int valSmoke = 0;');
+      timed.push('  valSmoke = analogRead(MQ2_PIN);');
+      jsonF.push({ k: 'smoke', fmt: '%d', arg: 'valSmoke' });
+      oledF.push({ label: 'SMK  ', arg: 'valSmoke', digits: -1, unit: '' });
+    }
+    if (P('pot')) {
+      defs.push(`#define POT_PIN ${pinVal(macroPin(plan, 'POT_PIN'))}`);
+      globals.push('int valPot = 0;');
+      timed.push('  valPot = analogRead(POT_PIN);');
+      jsonF.push({ k: 'pot', fmt: '%d', arg: 'valPot' });
+    }
     if (P('pir')) {
       defs.push(`#define PIR_PIN ${pinVal(macroPin(plan, 'PIR_PIN'))}`);
       globals.push('bool lastMotion = false;');
@@ -123,6 +159,32 @@ window.CF = window.CF || {};
       globals.push('bool relayState = false;');
       setup.push('  pinMode(RELAY_PIN, OUTPUT);');
     }
+    if (P('pump')) {
+      defs.push(`#define PUMP_PIN ${pinVal(macroPin(plan, 'PUMP_PIN'))}  // 經繼電器/MOSFET 驅動`);
+      globals.push('bool pumpState = false;');
+      setup.push('  pinMode(PUMP_PIN, OUTPUT);');
+      jsonF.push({ k: 'pump', fmt: '%d', arg: '(int)pumpState' });
+    }
+    if (P('ws2812')) {
+      inc.push('#include <Adafruit_NeoPixel.h>');
+      defs.push(`#define WS2812_PIN ${pinVal(macroPin(plan, 'WS2812_PIN'))}`, '#define NUM_PIXELS 8',
+        'Adafruit_NeoPixel strip(NUM_PIXELS, WS2812_PIN, NEO_GRB + NEO_KHZ800);');
+      globals.push('unsigned long stripUntil = 0;');
+      setup.push('  strip.begin();', '  strip.show();');
+      helpers.push(
+        'void setStrip(uint8_t r, uint8_t g, uint8_t b) {',
+        '  for (int i = 0; i < NUM_PIXELS; i++) strip.setPixelColor(i, strip.Color(r, g, b));',
+        '  strip.show();',
+        '}');
+    }
+    if (P('encoder')) {
+      defs.push(`#define ENC_CLK_PIN ${pinVal(macroPin(plan, 'ENC_CLK_PIN'))}`,
+        `#define ENC_DT_PIN ${pinVal(macroPin(plan, 'ENC_DT_PIN'))}`,
+        `#define ENC_SW_PIN ${pinVal(macroPin(plan, 'ENC_SW_PIN'))}`);
+      globals.push('int encoderPos = 0;', 'int lastClkState = HIGH;', 'bool lastEncPressed = false;');
+      setup.push('  pinMode(ENC_CLK_PIN, INPUT);', '  pinMode(ENC_DT_PIN, INPUT);', '  pinMode(ENC_SW_PIN, INPUT_PULLUP);');
+      jsonF.push({ k: 'encoder', fmt: '%d', arg: 'encoderPos' });
+    }
     if (P('oled')) {
       needWire();
       inc.push('#include <Adafruit_GFX.h>', '#include <Adafruit_SSD1306.h>');
@@ -135,6 +197,12 @@ window.CF = window.CF || {};
         '  display.setCursor(0, 0);',
         '  display.print("NEMOCLAW LAB READY");',
         '  display.display();');
+    }
+    if (P('lcd1602')) {
+      needWire();
+      inc.push('#include <LiquidCrystal_I2C.h>');
+      defs.push('LiquidCrystal_I2C lcd(0x27, 16, 2);');
+      setup.push('  lcd.init();', '  lcd.backlight();', '  lcd.setCursor(0, 0);', '  lcd.print("NEMOCLAW LAB");');
     }
     /* ---- 連線堆疊 ---- */
     if (wifi) {
@@ -174,6 +242,20 @@ window.CF = window.CF || {};
         '}');
     }
 
+    /* ---- LCD1602 更新 ---- */
+    const lcdFn = [];
+    if (P('lcd1602')) {
+      lcdFn.push('void updateLcd() {', '  lcd.clear();');
+      oledF.slice(0, 2).forEach((f, i) => {
+        lcdFn.push(`  lcd.setCursor(0, ${i});`);
+        lcdFn.push(`  lcd.print("${f.label.trim()} ");`);
+        lcdFn.push(f.digits >= 0 ? `  lcd.print(${f.arg}, ${f.digits});` : `  lcd.print(${f.arg});`);
+        if (f.unit) lcdFn.push(`  lcd.print("${f.unit}");`);
+      });
+      if (!oledF.length) lcdFn.push('  lcd.print("RUNNING");');
+      lcdFn.push('}');
+    }
+
     /* ---- OLED 更新 ---- */
     const oledFn = [];
     if (P('oled')) {
@@ -208,6 +290,8 @@ window.CF = window.CF || {};
       if (P('relay')) cb.push('  if (cmd == "on")  { relayState = true;  digitalWrite(RELAY_PIN, HIGH); }', '  if (cmd == "off") { relayState = false; digitalWrite(RELAY_PIN, LOW); }');
       if (P('servo')) cb.push('  if (cmd == "open")  { gateOpen = true;  gateServo.write(90); }', '  if (cmd == "close") { gateOpen = false; gateServo.write(0); }', '  int angle = cmd.toInt();', '  if (angle > 0 && angle <= 180) gateServo.write(angle);');
       if (P('led') && !P('pir') && !P('bh1750') && !P('hcsr04')) cb.push('  if (cmd == "on")  digitalWrite(LED_PIN, HIGH);', '  if (cmd == "off") digitalWrite(LED_PIN, LOW);');
+      if (P('pump') && !P('soil')) cb.push('  if (cmd == "on")  { pumpState = true;  digitalWrite(PUMP_PIN, HIGH); }', '  if (cmd == "off") { pumpState = false; digitalWrite(PUMP_PIN, LOW); }');
+      if (P('ws2812') && !P('bh1750')) cb.push('  if (cmd == "on")  setStrip(255, 255, 255);', '  if (cmd == "off") setStrip(0, 0, 0);');
       cb.push('  remoteEnabled = (cmd == "1" || cmd == "on");', '}');
       conn.push(...cb, '',
         'void connectMqtt() {',
@@ -267,9 +351,16 @@ window.CF = window.CF || {};
     if (http || web) loopFn.push('  server.handleClient();');
     loopFn.push('', `  if (millis() - ${mqtt ? 'lastPublish' : 'lastRead'} >= 5000) {`, `    ${mqtt ? 'lastPublish' : 'lastRead'} = millis();`, '    readSensors();');
     if (P('oled')) loopFn.push('    updateDisplay();');
+    if (P('lcd1602')) loopFn.push('    updateLcd();');
     if (mqtt && jsonF.length) loopFn.push('    if (mqtt.connected()) mqtt.publish(MQTT_TOPIC, buildJson().c_str());');
     // 定時區的配對邏輯
     if (P('buzzer') && P('dht11')) loopFn.push('    if (valTemperature >= TEMP_ALERT) beepUntil = millis() + 400;  // 高溫警報');
+    if (P('buzzer') && P('mq2')) loopFn.push('    if (valSmoke >= SMOKE_ALERT) beepUntil = millis() + 400;  // 煙霧警報');
+    if (P('led') && P('mq2')) loopFn.push('    digitalWrite(LED_PIN, valSmoke >= SMOKE_ALERT ? HIGH : LOW);  // 煙霧警示燈');
+    if (P('buzzer') && P('mpu6050')) loopFn.push('    if (valAccel >= ACCEL_ALERT) beepUntil = millis() + 500;  // 震動警報');
+    if (P('pump') && P('soil')) loopFn.push('    pumpState = valSoil > SOIL_DRY_RAW;  // 土壤過乾自動澆水', '    digitalWrite(PUMP_PIN, pumpState ? HIGH : LOW);');
+    if (P('servo') && P('pot')) loopFn.push(`    gateServo.write(map(valPot, 0, ${esp32 ? 4095 : 1023}, 0, 180));  // 旋鈕控制角度`);
+    if (P('ws2812') && P('bh1750')) loopFn.push('    if (millis() > stripUntil) {', '      if (valLux < 200) setStrip(255, 140, 40);  // 光線不足暖光', '      else setStrip(0, 0, 0);', '    }');
     if (P('led') && P('bh1750')) loopFn.push('    digitalWrite(LED_PIN, valLux < 200 ? HIGH : LOW);  // 光線不足亮燈');
     if (P('relay') && P('bh1750')) loopFn.push('    relayState = valLux < 150;  // 光照不足自動補光', '    digitalWrite(RELAY_PIN, relayState ? HIGH : LOW);');
     if (P('led') && P('soil')) loopFn.push('    digitalWrite(LED_PIN, valSoil > SOIL_DRY_RAW ? HIGH : LOW);  // 土壤過乾提醒');
@@ -282,6 +373,7 @@ window.CF = window.CF || {};
       if (mqtt) loopFn.push(`    if (mqtt.connected()) mqtt.publish(MQTT_TOPIC, "{${Q}event${Q}:${Q}motion${Q}}");`);
       if (P('led')) loopFn.push('    ledUntil = millis() + 8000;');
       if (P('buzzer')) loopFn.push('    beepUntil = millis() + 600;');
+      if (P('ws2812')) loopFn.push('    setStrip(255, 0, 0);  // 偵測到人體亮紅光', '    stripUntil = millis() + 8000;');
       loopFn.push('  }', '  lastMotion = motion;');
       if (P('led')) loopFn.push('  digitalWrite(LED_PIN, millis() < ledUntil ? HIGH : LOW);');
     }
@@ -291,6 +383,16 @@ window.CF = window.CF || {};
       if (P('servo')) loopFn.push('      gateOpen = !gateOpen;', '      gateServo.write(gateOpen ? 90 : 0);');
       if (P('buzzer') && !P('hcsr04')) loopFn.push('      beepUntil = millis() + 150;');
       loopFn.push('    }', '  }');
+    }
+    if (P('encoder')) {
+      loopFn.push('', '  int clk = digitalRead(ENC_CLK_PIN);',
+        '  if (clk != lastClkState && clk == LOW) {',
+        '    encoderPos += (digitalRead(ENC_DT_PIN) != clk) ? 1 : -1;');
+      if (P('servo')) loopFn.push('    gateServo.write(constrain(encoderPos * 2, 0, 180));  // 旋轉控制角度');
+      loopFn.push('    Serial.print("encoder: "); Serial.println(encoderPos);', '  }', '  lastClkState = clk;',
+        '  bool encPressed = digitalRead(ENC_SW_PIN) == LOW;',
+        '  if (encPressed && !lastEncPressed) encoderPos = 0;  // 按下歸零',
+        '  lastEncPressed = encPressed;');
     }
     if (P('buzzer') && P('hcsr04')) {
       loopFn.push('', '  if (valDistance > 0 && valDistance < 60) {  // 距離越近，提示越急促',
@@ -311,6 +413,7 @@ window.CF = window.CF || {};
       ...readFn, '',
       ...jsonFn, jsonFn.length ? '' : null,
       ...oledFn, oledFn.length ? '' : null,
+      ...lcdFn, lcdFn.length ? '' : null,
       ...conn, conn.length ? '' : null,
       ...setupFn, '',
       ...loopFn, ''
