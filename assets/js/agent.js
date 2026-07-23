@@ -150,7 +150,7 @@
     },
     {
       name: 'ind_load_preset',
-      description: '在工業配線模式載入經典迴路範例（會覆蓋盤面），共 40 個分四級。基礎：doorbell 門鈴、selfhold 自保持、jog 寸動、joghold 寸動/連續切換、twolamp 指示燈、twoplace 兩處控制、mkpilot MK中繼、delaystart 暖機延時、seq 順序啟動、alarm 過載警報。進階/電力：fwdrev 正逆轉、ydelta Y-Δ、seqdelay 延時順序、pumps 雙泵選擇、flasher 閃爍警報、co51 過電流保護、meterpanel 受電儀表盤、capbank 功因電容、ats1 停電自動切換、ats2 受電盤總和。高壓受電：hv_std 標準受電、hv_seq 停送電操作、hv_arc 帶載拉DS事故、hv_relay RY51反時限、hv_pf 簡易受電、hv_fuse PF熔斷、hv_pt PT控制電源、hv_2tr 雙變壓器、hv_atsgen 高壓停電聯動、hv_full 受電盤總和、ehv_161 特高壓161kV串級、ehv_345 超高壓345kV變電所、ehv_seq 161kV操作順序、ehv_arc 161kV弧光事故、ehv_relay 161kV保護。PLC：plc_selfhold、plc_jog、plc_timer、plc_counter 計數啟動、plc_flash 交替閃爍、plc_fwdrev、plc_seq、plc_ydelta、plc_conveyor 輸送帶、plc_alarm 斷續警報。',
+      description: '在工業配線模式載入經典迴路範例（會覆蓋盤面），共 40 個分四級。基礎：doorbell 門鈴、selfhold 自保持、jog 寸動、joghold 寸動/連續切換、twolamp 指示燈、twoplace 兩處控制、mkpilot MK中繼、delaystart 暖機延時、seq 順序啟動、alarm 過載警報。進階/電力：fwdrev 正逆轉、ydelta Y-Δ、seqdelay 延時順序、pumps 雙泵選擇、flasher 閃爍警報、co51 過電流保護、meterpanel 受電儀表盤、capbank 功因電容、ats1 停電自動切換、ats2 受電盤總和。高壓受電：hv_std 標準受電、hv_seq 停送電操作、hv_arc 帶載拉DS事故、hv_relay RY51反時限、hv_pf 簡易受電、hv_fuse PF熔斷、hv_pt PT控制電源、hv_2tr 雙變壓器、hv_atsgen 高壓停電聯動、hv_full 受電盤總和、ehv_161 特高壓161kV串級、ehv_345 超高壓345kV變電所、ehv_seq 161kV操作順序、ehv_arc 161kV弧光事故、ehv_relay 161kV保護。PLC：plc_selfhold、plc_jog、plc_timer、plc_counter 計數啟動、plc_flash 交替閃爍、plc_fwdrev、plc_seq、plc_ydelta、plc_conveyor 輸送帶、plc_alarm 斷續警報。設備試驗：test_meg_motor、test_meg_bad 受潮判讀、test_meg_tr、test_hipot_tr 耐壓、test_hipot_bad 崩潰重現、test_ct_ratio、test_ct_bad 極性反、test_relay_inject、test_relay_bad 遲緩、test_full 總和演練。',
       parameters: { type: 'object', properties: { preset_id: { type: 'string' } }, required: ['preset_id'] },
       run: a => {
         CF.App.setMode('ind');
@@ -191,7 +191,7 @@
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['start', 'stop', 'press', 'toggle_nfb', 'toggle_cos', 'trip', 'set_timer', 'set_param', 'outage', 'switch', 'reset'] },
+          action: { type: 'string', enum: ['start', 'stop', 'press', 'toggle_nfb', 'toggle_cos', 'trip', 'set_timer', 'set_param', 'outage', 'switch', 'reset', 'run_test', 'inject_defect'] },
           target: { type: 'string', description: '元件標籤，press/trip/set_timer/set_param 需要' },
           seconds: { type: 'number', description: 'set_timer 用，1–60' },
           value: { type: 'number', description: 'set_param 用：TR 秒數、TH-RY/CO 整定電流、馬達運轉電流、POWER 線電壓、GEN 起動延時、SC 電容電流' }
@@ -215,6 +215,16 @@
         if (a.action === 'reset') {
           const p0 = find(a.target);
           return CF.Ind.resetProtection(p0 && p0.uid);
+        }
+        if (a.action === 'run_test') {
+          const p0 = find(a.target) || CF.Ind.getParts().find(x => x.def.tester);
+          if (!p0 || !p0.def.tester) return { ok: false, error: `找不到試驗器「${a.target || ''}」。盤上試驗器：${CF.Ind.getParts().filter(x => x.def.tester).map(x => x.label).join('、') || '無'}` };
+          return await CF.Ind.runTest(p0.uid);
+        }
+        if (a.action === 'inject_defect') {
+          const p0 = find(a.target);
+          if (!p0) return { ok: false, error: `找不到元件「${a.target}」` };
+          return CF.Ind.injectDefect(p0.uid);
         }
         if (a.action === 'press') {
           const p = find(a.target);
@@ -295,7 +305,7 @@
       '【工業配線模式（ind）】台灣工配（丙級／乙級）教學：雙電壓域＝三相主迴路（R/S/T）＋110V 控制迴路（C1/C2），兩域不可混接。',
       '元件與端子：POWER（R/S/T/C1/C2，線電壓可調，可模擬停電）、NFB（1-2/3-4/5-6，雙擊開關）、FUSE 保險絲（同 NFB 端子，常通）、MC 電磁接觸器（主 1-2/3-4/5-6；線圈 A1-A2；輔助 a 13-14、b 21-22）、TR 限時電驛（A1-A2；延時 b 55-56、延時 a 67-68；秒數可調）、MK 電力電驛（A1-A2；a 13-14/23-24；b 21-22）、TH-RY（主串接；b 95-96；a 97-98 跳脫閉合；過載整定可調，電流超過會真的熱跳脫）、CO 過電流電驛 51（同 TH-RY 端子，跳脫更快，整定可調）、STOP＝pb_nc（1-2）、START＝pb_no（3-4）、COS（A 位 1-2／B 位 3-4）、GL/RL/BZ（X1/X2）、motor（U/V/W，運轉電流可調——調大會讓保護電驛跳脫）、motor6（U1V1W1＋U2V2W2）、VM 電壓表（P1/P2 跨兩相）、AM 電流表（1-2 串一相）、SC 電容器組（U/V/W）、TX 控制變壓器（P1/P2 跨兩相→S1/S2 出 110V 控制電源）、ATS（常用 1/3/5、備用 7/9/11、輸出 2/4/6，自動切換）、GEN 發電機（GR/GS/GT，停電自動起動 AMF，起動延時可調）、PLC（L/N、COM→X0-X7、C0＋Y0-Y7）。',
       '接線鐵則：控制迴路從 C1（或 TX 的 S1）出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2（或 S2）；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖）。發電機絕不可與市電直接相連，必須經 ATS；受電盤的控制電源（TX）要取在 ATS 之後。',
-      '【高壓受電（11.4kV，紫色端子 dom=hv）】HV-IN 進線（H1/H2/H3，可模擬台電停電）→ LA 避雷器（並聯）→ DS 隔離開關（1-6，只能無載操作！帶載開斷＝弧光事故）→ VCB 真空斷路器（1-6＋跳脫線圈 TC1/TC2）或 LBS＋PF 熔絲 → CT 比流器（串接＋k/l 訊號）→ TR-3φ 變壓器（一次 1/3/5 高壓、二次 2/4/6 低壓 380V，一次電流＝二次÷30）→ 低壓側照舊。RY51 反時限電驛：S1/S2←CT k/l、T1/T2→VCB TC1/TC2，始動電流（一次A）可調，越過載跳越快。PT 比壓器＝高壓版 TX（P1/P2 高壓→S1/S2 110V）。操作順序：送電 DS→VCB、停電 VCB→DS。特高壓：161kV（dom=ehv 藍）經 DS-161/GCB-161/CT-161→MTX-161 主變降 11.4kV；345kV（dom=uhv 紅）經 DS-345/GCB-345→MTX-345 聯絡主變降 161kV——可四級串級 345→161→11.4→380，電流逐級換算（÷變比），GCB 同樣有 TC1/TC2 跳脫線圈可接 RY51。工具：ind_load_preset 載入 40 個四級範例、ind_add_part／ind_wire 自由配線（「標籤:端子」如 MC1:13）、ind_control 通電操作（含 outage 模擬停電、set_param 調參數）、ind_status 看現況（含各元件可調參數）。接線後 ERC 有 error 必須修到通過才能通電。',
+      '【高壓受電（11.4kV，紫色端子 dom=hv）】HV-IN 進線（H1/H2/H3，可模擬台電停電）→ LA 避雷器（並聯）→ DS 隔離開關（1-6，只能無載操作！帶載開斷＝弧光事故）→ VCB 真空斷路器（1-6＋跳脫線圈 TC1/TC2）或 LBS＋PF 熔絲 → CT 比流器（串接＋k/l 訊號）→ TR-3φ 變壓器（一次 1/3/5 高壓、二次 2/4/6 低壓 380V，一次電流＝二次÷30）→ 低壓側照舊。RY51 反時限電驛：S1/S2←CT k/l、T1/T2→VCB TC1/TC2，始動電流（一次A）可調，越過載跳越快。PT 比壓器＝高壓版 TX（P1/P2 高壓→S1/S2 110V）。操作順序：送電 DS→VCB、停電 VCB→DS。特高壓：161kV（dom=ehv 藍）經 DS-161/GCB-161/CT-161→MTX-161 主變降 11.4kV；345kV（dom=uhv 紅）經 DS-345/GCB-345→MTX-345 聯絡主變降 161kV——可四級串級 345→161→11.4→380，電流逐級換算（÷變比），GCB 同樣有 TC1/TC2 跳脫線圈可接 RY51。【設備試驗】MEG 絕緣電阻（L→設備、E→GND，低壓≥1MΩ/高壓≥10MΩ）、HIPOT 耐壓（H→設備、R→GND，缺陷會閃絡）、CTT CT 變比極性（P1P2→CT 1/2、S1S2→k/l）、RTS 電驛注入（I1I2→RY S1S2，驗反時限曲線±10%）。規則：試驗必須停電進行、盤上有試驗器不可通電；ind_control 的 run_test 執行試驗、inject_defect 注入/清除教學缺陷（絕緣劣化/CT極性反/電驛遲緩）。工具：ind_load_preset 載入 55 個五區範例、ind_add_part／ind_wire 自由配線（「標籤:端子」如 MC1:13）、ind_control 通電操作（含 outage 模擬停電、set_param 調參數）、ind_status 看現況（含各元件可調參數）。接線後 ERC 有 error 必須修到通過才能通電。',
       '',
       '【PLC】梯形圖模型：每階＝欄串聯（AND），每欄可疊 2 個接點（並聯 OR），線圈在最右。位址：X0-X7 輸入、Y0-Y7 輸出、M0-M7 內部繼電器、T0-T3 TON 計時器（秒）、C0-C3 CTU 計數器。自保持範式：(X0 OR Y0) AND X1 → OUT Y0（STOP 實體接 b 接點、程式用常開 X1）。用 plc_program 讀寫程式；盤面要有 plc 元件且 L/N 接 C1/C2 才會執行；輸出 Y 得電＝Y 端子與 C0 導通。匯出檔含 IEC 61131-3 ST（program.st）與 IO 對照表。',
       '',

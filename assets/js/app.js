@@ -727,6 +727,34 @@
         b.addEventListener('click', () => { CF.Ind.resetProtection(p.uid); updateIndSimUi(); });
         ops.appendChild(b);
       }
+      if (p.def.tester) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `🧪 執行 ${p.label} 試驗`;
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          const r = await CF.Ind.runTest(p.uid);
+          b.disabled = false;
+          if (!r.ok) window.alert(r.error);
+          updateIndSimUi();
+        });
+        ops.appendChild(b);
+      }
+    }
+    // 缺陷注入（教學）：盤上有試驗器時，對受試設備提供注入按鈕
+    if (CF.Ind.getParts().some(p => p.def.tester)) {
+      for (const p of CF.Ind.getParts()) {
+        if (p.def.tester || p.def.earth || p.id === 'source') continue;
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `💉 ${p.label} 缺陷注入/清除`;
+        b.addEventListener('click', () => {
+          const r = CF.Ind.injectDefect(p.uid);
+          if (!r.ok) window.alert(r.error);
+          updateIndSimUi();
+        });
+        ops.appendChild(b);
+      }
     }
     if (!ops.children.length) {
       const n = document.createElement('div');
@@ -824,6 +852,7 @@
       if (p.def.fusehv && p.tripped) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">熔斷 💥</div></div>`);
       if (p.def.hvtr) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${running && p.fault === undefined ? '' : ''}">${p.paramVal}kVA</div></div>`);
       if (p.id === 'ry' && p.ryOn) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">51 動作中</div></div>`);
+      if (p.def.tester && p.testMsg) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.testMsg.includes('✓') ? 'on' : ''}" ${p.testMsg.includes('✕') ? 'style="color:var(--amber)"' : ''}>${esc(p.testMsg)}</div></div>`);
     }
     refs.status.innerHTML = chips.join('') || '<div class="sim-note">尚無器件。</div>';
     refs.log.innerHTML = CF.Ind.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
@@ -951,6 +980,7 @@
       ['basic', '基礎工配（丙級）', false],
       ['adv', '進階／電力配電（乙級・受電盤）', true],
       ['hv', '高壓／特高壓受電（11.4kV–345kV）', true],
+      ['test', '設備試驗（竣工／維護）', true],
       ['plc', 'PLC 可程式控制', true]
     ];
     for (const [tier, title, collapsed] of IND_TIERS) {
