@@ -217,6 +217,8 @@
     $('#viewToolbar').hidden = mode !== 'view';
     $('#editToolbar').hidden = mode !== 'edit';
     $('#indToolbar').hidden = mode !== 'ind';
+    $('#leftMcu').hidden = mode === 'ind';
+    $('#leftInd').hidden = mode !== 'ind';
     $('#stage3d').hidden = mode !== 'view';
     $('#stage2d').hidden = mode !== 'edit';
     $('#stageInd').hidden = mode !== 'ind';
@@ -643,7 +645,7 @@
       if (p.def.momentary) {
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
-        b.textContent = `⬇ 按住 ${p.def.label}`;
+        b.textContent = `⬇ 按住 ${p.label}`;
         b.addEventListener('pointerdown', () => { CF.Ind.pressPB(p.uid, true); b.classList.add('held'); });
         const up = () => { CF.Ind.pressPB(p.uid, false); b.classList.remove('held'); };
         b.addEventListener('pointerup', up);
@@ -712,8 +714,8 @@
     $('#simStatus').textContent = running ? 'RUNNING' : 'POWER OFF';
     const chips = [];
     for (const p of CF.Ind.getParts()) {
-      if (p.def.coil) chips.push(`<div class="sim-out"><div class="k">${p.def.label}</div><div class="sim-chipval ${p.energized ? 'on' : ''}">${p.energized ? '吸持 🧲' : '釋放'}</div></div>`);
-      if (p.def.motor) chips.push(`<div class="sim-out"><div class="k">MOTOR</div><div class="sim-chipval ${p.run ? 'on' : ''}">${p.run ? 'RUN ▶' : 'STOP ■'}</div></div>`);
+      if (p.def.coil) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.energized ? 'on' : ''}">${p.energized ? '吸持 🧲' : '釋放'}</div></div>`);
+      if (p.def.motor) chips.push(`<div class="sim-out"><div class="k">MOTOR${p.label.replace(/\D/g, '')}</div><div class="sim-chipval ${p.run ? 'on' : ''}">${p.run ? 'RUN ▶' : 'STOP ■'}</div></div>`);
       if (p.def.load) chips.push(`<div class="sim-out"><div class="k">${p.def.name.includes('綠') ? 'PL 綠' : 'PL 紅'}</div><div class="sim-led ${p.lit ? 'on' : ''}" style="margin:0 auto;${p.lit && p.def.lamp === '#3ddc84' ? 'background:#3ddc84;border-color:#1f8a4d;box-shadow:0 0 14px rgba(61,220,132,.8);' : ''}"></div></div>`);
       if (p.def.toggle) chips.push(`<div class="sim-out"><div class="k">NFB</div><div class="sim-chipval ${p.on ? 'on' : ''}">${p.on ? 'ON' : 'OFF'}</div></div>`);
       if (p.def.trip && p.tripped) chips.push(`<div class="sim-out"><div class="k">TH-RY</div><div class="sim-chipval" style="color:var(--amber)">TRIP ⚡</div></div>`);
@@ -837,6 +839,17 @@
     });
     $('#indExample').addEventListener('click', () => CF.Ind.loadExample());
     $('#indClear').addEventListener('click', () => CF.Ind.clear());
+    // 左欄：工業模式經典迴路範例卡
+    const ipHost = $('#indPresets');
+    for (const pr of CF.Ind.PRESETS) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'preset-card';
+      card.innerHTML = `<b>${pr.name}</b><span>${pr.desc}</span>`;
+      card.addEventListener('click', () => CF.Ind.loadPreset(pr.id));
+      ipHost.appendChild(card);
+    }
+
     const ipal = $('#indPalette');
     for (const id of CF.Ind.PALETTE) {
       const d = CF.Ind.DEFS[id];
