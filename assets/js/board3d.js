@@ -580,8 +580,9 @@ CF.Board3D = (function () {
     }
 
     const base = scene.base || { p: 0, s: 0, d: 0 };
-    const itemsBase = [];   // 麵包板本體：先畫
-    const itemsTop = [];    // 板上元件與接線：後畫
+    const itemsBase = [];    // 第 1 層：麵包板板體
+    const itemsSurf = [];    // 第 2 層：板面上的軌道線與孔洞（貼在頂面，必然可見）
+    const itemsTop = [];     // 第 3 層：元件、接線、腳位點
     scene.polys.forEach((q, i) => {
       const pts = q.pts.map(proj);
       let d = 0; for (const p of pts) d += p[2];
@@ -589,15 +590,15 @@ CF.Board3D = (function () {
     });
     scene.segs.forEach((s, i) => {
       const a = proj(s.a), b = proj(s.b);
-      (i < base.s ? itemsBase : itemsTop).push({ t: 1, d: (a[2] + b[2]) / 2 - (s.thin ? 0.25 : 0.9), a, b, color: s.color, thin: s.thin });
+      (i < base.s ? itemsSurf : itemsTop).push({ t: 1, d: (a[2] + b[2]) / 2 - (s.thin ? 0.25 : 0.9), a, b, color: s.color, thin: s.thin });
     });
     scene.dots.forEach((dt, i) => {
       const p = proj(dt.p);
-      (i < base.d ? itemsBase : itemsTop).push({ t: 2, d: p[2] - 0.45, p, r: dt.r, color: dt.color });
+      (i < base.d ? itemsSurf : itemsTop).push({ t: 2, d: p[2] - 0.45, p, r: dt.r, color: dt.color });
     });
     itemsBase.sort((m, n) => n.d - m.d);
     itemsTop.sort((m, n) => n.d - m.d);
-    const items = itemsBase.concat(itemsTop);
+    const items = itemsBase.concat(itemsSurf, itemsTop);
 
     for (const it of items) {
       if (it.t === 0) {
