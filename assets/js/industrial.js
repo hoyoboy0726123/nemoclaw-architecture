@@ -531,6 +531,59 @@ CF.Ind = (function () {
       pinNote: 'S1/S2 ← CT k/l；T1/T2 → VCB TC1/TC2',
       alts: [['數位複合電驛', '50/51/51N/27/59 一體'], ['LCO', '感應圓盤式']]
     },
+    /* ── 設備試驗（竣工／維護）：儀器探棒 dom:'any' 可接任何電壓域端子 ── */
+    gnd: {
+      id: 'gnd', name: '接地排', label: 'GND', cls: 'SOURCE', w: 64, h: 56, row: 1,
+      color: '#3a4438', earth: true,
+      terms: [{ n: 'G1', dx: 16, dy: 56, dom: 'any' }, { n: 'G2', dx: 44, dy: 56, dom: 'any' }],
+      bridges: () => [['G1', 'G2']], allPairs: [['G1', 'G2']],
+      why: '試驗與接地共用端子排。絕緣電阻／耐壓試驗的回路端（E／R 探棒）接這裡。',
+      pinNote: 'G1/G2 內部相通',
+      alts: [['接地棒', '現場打入大地'], ['等電位聯結', '盤體接地']]
+    },
+    meg: {
+      id: 'meg', name: 'MEG 絕緣電阻計（Megger）', label: 'MEG', cls: 'METER', w: 96, h: 76, row: 1,
+      color: '#28404a', tester: 'meg',
+      param: { key: 'volt', name: '測試電壓', unit: 'V', min: 250, max: 5000, def: 1000 },
+      terms: [{ n: 'L', dx: 24, dy: 76, dom: 'any' }, { n: 'E', dx: 64, dy: 76, dom: 'any' }],
+      bridges: () => [], allPairs: [],
+      why: '絕緣電阻試驗：L 探棒接受試設備端子、E 探棒接接地排，施加直流測試電壓讀 MΩ 值。判定基準（簡化）：低壓 ≥1MΩ、高壓 ≥10MΩ。試驗前必須停電。',
+      pinNote: 'L → 受試設備端子；E → GND 接地排。雙擊改測試電壓',
+      alts: [['5kV 絕緣計', '特高壓設備'], ['PI 極化指數', '10min/1min 比值判斷受潮']]
+    },
+    hipot: {
+      id: 'hipot', name: 'HIPOT 耐壓試驗器', label: 'HIPOT', cls: 'METER', w: 96, h: 76, row: 1,
+      color: '#4a3040', tester: 'hipot',
+      param: { key: 'volt', name: '試驗電壓', unit: 'kV', min: 1, max: 50, def: 22 },
+      terms: [{ n: 'H', dx: 24, dy: 76, dom: 'any' }, { n: 'R', dx: 64, dy: 76, dom: 'any' }],
+      bridges: () => [], allPairs: [],
+      why: 'AC 耐壓試驗：升壓至試驗電壓（例：11.4kV 級 ≈ 2E 倍）保持一分鐘，觀察洩漏電流與有無閃絡。絕緣有缺陷會在升壓途中崩潰——模擬會真的炸。',
+      pinNote: 'H → 受試設備端子；R → GND。試驗電壓雙擊可調',
+      alts: [['DC 耐壓', '電纜常用'], ['VLF 0.1Hz', '長電纜容量性負載']]
+    },
+    ctt: {
+      id: 'ctt', name: 'CTT CT 測試器（變比／極性）', label: 'CTT', cls: 'METER', w: 110, h: 76, row: 1,
+      color: '#3a4430', tester: 'ctt',
+      param: { key: 'inject', name: '注入電流', unit: 'A', min: 1, max: 100, def: 10 },
+      terms: [
+        { n: 'P1', dx: 18, dy: 76, dom: 'any' }, { n: 'P2', dx: 44, dy: 76, dom: 'any' },
+        { n: 'S1', dx: 70, dy: 76, dom: 'any' }, { n: 'S2', dx: 96, dy: 76, dom: 'any' }
+      ],
+      bridges: () => [], allPairs: [],
+      why: 'CT 竣工試驗：一次側注入已知電流、量二次側輸出——驗證變比與極性。極性接反的 CT 會讓保護電驛誤動作或拒動。',
+      pinNote: 'P1/P2 → CT 一次側（1/2）；S1/S2 → CT 的 k/l',
+      alts: [['激磁曲線試驗', '鐵芯飽和特性'], ['負擔試驗', '二次迴路阻抗']]
+    },
+    rts: {
+      id: 'rts', name: 'RTS 電驛測試器（注入）', label: 'RTS', cls: 'METER', w: 96, h: 76, row: 1,
+      color: '#443040', tester: 'rts',
+      param: { key: 'inject', name: '注入電流（一次換算）', unit: 'A', min: 0.01, max: 100, def: 1 },
+      terms: [{ n: 'I1', dx: 24, dy: 76, dom: 'any' }, { n: 'I2', dx: 64, dy: 76, dom: 'any' }],
+      bridges: () => [], allPairs: [],
+      why: '保護電驛注入測試：對 RY51 注入模擬電流、量測實際動作時間，跟反時限曲線 t=TMS×3/(M−1) 比對（±10% 合格）。跳脫出口有接斷路器的話會真的跳給你看。',
+      pinNote: 'I1/I2 → RY 的 S1/S2（取代 CT）。注入電流雙擊可調',
+      alts: [['三相電驛測試儀', '差動／方向性電驛'], ['一次注入', '連 CT 一起驗']]
+    },
     plc: {
       id: 'plc', name: 'PLC 可程式控制器', label: 'PLC', cls: 'CONTROL', w: 264, h: 104, row: 1,
       color: '#23405c', plc: true, single: true,
@@ -555,7 +608,8 @@ CF.Ind = (function () {
   const PALETTE = ['nfb', 'mc', 'tr', 'mk', 'thry', 'pb_nc', 'pb_no', 'cos', 'pl_g', 'pl_r', 'bz', 'motor', 'motor6', 'plc',
     'fuse', 'co', 'vm', 'am', 'sc', 'tx', 'ats', 'gen',
     'hvin', 'la', 'ds', 'lbs', 'vcb', 'pf', 'cthv', 'pt', 'hvtr', 'ry',
-    'ehvin161', 'ds161', 'gcb161', 'ct161', 'mtx161', 'ehvin345', 'ds345', 'gcb345', 'mtx345'];
+    'ehvin161', 'ds161', 'gcb161', 'ct161', 'mtx161', 'ehvin345', 'ds345', 'gcb345', 'mtx345',
+    'gnd', 'meg', 'hipot', 'ctt', 'rts'];
 
   /* ================= 狀態 ================= */
   const LW = 1180, LH = 540;              // 邏輯畫布尺寸
@@ -834,7 +888,7 @@ CF.Ind = (function () {
     const DOMN = { main: '低壓主迴路（380V）', ctrl: '控制迴路（110V）', hv: '高壓（11.4kV）', ehv: '特高壓（161kV）', uhv: '超高壓（345kV）' };
     for (const w of st.wires) {
       const pa = termPos(byUid(w.a.uid), w.a.term), pb = termPos(byUid(w.b.uid), w.b.term);
-      if (pa && pb && pa.dom !== pb.dom) {
+      if (pa && pb && pa.dom !== pb.dom && pa.dom !== 'any' && pb.dom !== 'any') {
         err('電壓域混接', `${labelOf(w.a.uid, w.a.term)} ↔ ${labelOf(w.b.uid, w.b.term)}：${DOMN[pa.dom]} 與 ${DOMN[pb.dom]} 不可直接相接。`);
       }
     }
@@ -844,6 +898,21 @@ CF.Ind = (function () {
       return checks;
     }
 
+    // 試驗台模式：儀器在盤上＝停電試驗情境，跳過受電路徑類檢查
+    const testerMode = st.parts.some(p => defOf(p).tester);
+    if (testerMode) {
+      info('試驗台模式', '盤上有試驗器：受試設備不需接電源，通電功能已鎖定。接好探棒後到右欄「模擬」分頁執行試驗。');
+      const ufW0 = buildUF('wires');
+      for (const p of st.parts) {
+        const d = defOf(p);
+        if (!d.tester) continue;
+        const wired = d.terms.some(t => st.wires.some(w => (w.a.uid === p.uid && w.a.term === t.n) || (w.b.uid === p.uid && w.b.term === t.n)));
+        if (!wired) warn(`${labelOf(p.uid, '').trim()} 未接線`, '把探棒接到受試設備端子（與 GND）後才能執行試驗。');
+      }
+      void ufW0;
+      pass('電壓域', '試驗探棒（灰色端子）可接任何電壓域。');
+      return checks;
+    }
     // 靜態短路（NFB 強制 ON、其餘接點依「全閉」假設檢查最壞情況；線圈未激磁）
     const rest = solve({});
     if (rest.shorts.length) rest.shorts.forEach(s => err('短路', s + '——通電將立即跳電。'));
@@ -1064,6 +1133,9 @@ CF.Ind = (function () {
 
   /* ================= 模擬 ================= */
   function simStart() {
+    if (st.parts.some(p => defOf(p).tester)) {
+      return { ok: false, msg: '盤上有試驗器——試驗接線狀態不可通電（安全規定）。試驗完成後請清空或載入其他範例再通電。' };
+    }
     const checks = st.plan ? st.plan.checks : buildChecks();
     const e = checks.find(c => c.status === 'error');
     if (e) return { ok: false, msg: `${e.name} — ${e.desc}` };
@@ -1349,6 +1421,7 @@ CF.Ind = (function () {
   }
 
   function wireColor(w, pa) {
+    if (pa.dom === 'any') return '#6a7a72';
     if (pa.dom === 'hv') return '#8a3b9f';
     if (pa.dom === 'ehv') return '#2e6bd0';
     if (pa.dom === 'uhv') return '#c02a50';
@@ -1666,6 +1739,27 @@ CF.Ind = (function () {
       if (p.ryAcc > 0) ctx.fillText('動作中⋯', p.x + d.w / 2, p.y + d.h / 2 + 22);
       ctx.textAlign = 'left';
     }
+    if (d.tester) {  // 試驗器螢幕
+      ctx.fillStyle = '#101820';
+      roundRect(ctx, p.x + 10, p.y + 30, d.w - 20, 26, 4); ctx.fill();
+      ctx.font = '700 10px monospace';
+      ctx.textAlign = 'center';
+      const msg = p.testing ? '試驗中⋯' : (p.testMsg || 'READY');
+      ctx.fillStyle = p.testing ? '#ffb020' : msg.includes('✕') ? '#ff5348' : msg.includes('✓') ? '#3ddc84' : '#7a94ac';
+      ctx.fillText(msg.slice(0, 14), p.x + d.w / 2, p.y + 47);
+      ctx.textAlign = 'left';
+    }
+    if (p.defect) {  // 缺陷標記（教學注入）
+      ctx.font = '700 12px monospace';
+      ctx.fillStyle = '#ffb020';
+      ctx.fillText('💉', p.x + d.w - 16, p.y + 14);
+    }
+    if (d.earth) {  // 接地符號
+      const cx = p.x + d.w / 2;
+      ctx.strokeStyle = '#8fa89a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx, p.y + 24); ctx.lineTo(cx, p.y + 34); ctx.stroke();
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(cx - 9 + i * 3, p.y + 36 + i * 4); ctx.lineTo(cx + 9 - i * 3, p.y + 36 + i * 4); ctx.stroke(); }
+    }
     if (d.param && (d.trip || d.motor)) {  // 整定值／負載電流（可調參數提示）
       const v = p[d.param.key] !== undefined ? p[d.param.key] : d.param.def;
       ctx.font = '9px monospace';
@@ -1679,7 +1773,7 @@ CF.Ind = (function () {
     for (const t of d.terms) {
       const x = p.x + t.dx, y = p.y + t.dy;
       ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : t.dom === 'ehv' ? '#7db0e8' : t.dom === 'uhv' ? '#f0a0b8' : '#ffd9a0';
+      ctx.fillStyle = t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : t.dom === 'ehv' ? '#7db0e8' : t.dom === 'uhv' ? '#f0a0b8' : t.dom === 'any' ? '#f2f4f6' : '#ffd9a0';
       ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = '#3b4046';
@@ -1694,7 +1788,7 @@ CF.Ind = (function () {
         const x = p.x + t.dx, y = p.y + t.dy;
         ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2);
         ctx.strokeStyle = '#0e7a6e'; ctx.lineWidth = 2; ctx.stroke();
-        const txt = `${labelOf(p.uid, t.n)}（${t.dom === 'main' ? '主迴路' : t.dom === 'hv' ? '高壓11.4kV' : t.dom === 'ehv' ? '161kV' : t.dom === 'uhv' ? '345kV' : '控制'}）`;
+        const txt = `${labelOf(p.uid, t.n)}（${t.dom === 'main' ? '主迴路' : t.dom === 'hv' ? '高壓11.4kV' : t.dom === 'ehv' ? '161kV' : t.dom === 'uhv' ? '345kV' : t.dom === 'any' ? '試驗探棒' : '控制'}）`;
         ctx.font = '11px "IBM Plex Mono","Noto Sans TC",monospace';
         const tw = ctx.measureText(txt).width + 12;
         ctx.fillStyle = 'rgba(25,23,19,.92)';
@@ -1890,6 +1984,158 @@ CF.Ind = (function () {
     return { ok: true };
   }
 
+  /* ================= 設備試驗（竣工／維護） ================= */
+  function probeTarget(instUid, probeTerm, filterFn) {
+    // 探棒所在的「純導線」網上，找第一個非儀器的元件
+    const ufW = buildUF('wires');
+    const n = ufW.find(tid(instUid, probeTerm));
+    for (const p of st.parts) {
+      if (p.uid === instUid) continue;
+      const d = defOf(p);
+      if (d.tester) continue;
+      if (filterFn && !filterFn(p, d)) continue;
+      if (d.terms.some(t => ufW.find(tid(p.uid, t.n)) === n)) return p;
+    }
+    return null;
+  }
+  function testLog(msg) { pushLog(msg); render(); if (st.onSim) st.onSim(); }
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+
+  async function runTest(uid) {
+    const inst = byUid(uid);
+    if (!inst || !defOf(inst).tester) return { ok: false, error: '找不到試驗器' };
+    if (st.running) return { ok: false, error: '通電中不可進行試驗——先按「斷電」再試驗（安全第一）。' };
+    if (inst.testing) return { ok: false, error: '試驗進行中' };
+    const kind = defOf(inst).tester;
+    const lbl = labelOf(inst.uid, '').trim();
+    const pv = k => inst[k] !== undefined ? inst[k] : defOf(inst).param.def;
+    inst.testing = true;
+    inst.testMsg = '試驗中⋯';
+    try {
+      if (kind === 'meg') {
+        const tgt = probeTarget(uid, 'L');
+        const earth = probeTarget(uid, 'E', (p, d) => d.earth);
+        if (!tgt) return { ok: false, error: 'L 探棒沒有接到受試設備端子' };
+        if (!earth) return { ok: false, error: 'E 探棒沒有接到 GND 接地排' };
+        const tl = labelOf(tgt.uid, '').trim();
+        testLog(`${lbl}：對 ${tl} 施加 DC ${pv('volt')}V 絕緣測試⋯`);
+        await delay(1200);
+        const ins = insulOf(tgt) * (0.9 + Math.random() * 0.2);
+        const need = insulNeed(tgt);
+        const okV = ins >= need;
+        inst.testMsg = `${ins >= 1000 ? Math.round(ins) : ins.toFixed(1)}MΩ ${okV ? '✓合格' : '✕不合格'}`;
+        testLog(okV
+          ? `${lbl}：${tl} 絕緣電阻 ${Math.round(ins)}MΩ ≥ ${need}MΩ——判定【合格】✓`
+          : `${lbl}：${tl} 絕緣電阻僅 ${ins.toFixed(2)}MΩ < ${need}MΩ——判定【不合格】✕ 絕緣受潮或劣化，禁止加壓！`);
+        return { ok: true, target: tl, mohm: +ins.toFixed(2), pass: okV };
+      }
+      if (kind === 'hipot') {
+        const tgt = probeTarget(uid, 'H');
+        const earth = probeTarget(uid, 'R', (p, d) => d.earth);
+        if (!tgt) return { ok: false, error: 'H 探棒沒有接到受試設備端子' };
+        if (!earth) return { ok: false, error: 'R 探棒沒有接到 GND 接地排' };
+        const tl = labelOf(tgt.uid, '').trim();
+        const kv = pv('volt');
+        testLog(`${lbl}：${tl} AC 耐壓試驗，升壓至 ${kv}kV⋯`);
+        for (const pct of [25, 50, 75]) {
+          await delay(600);
+          if (tgt.defect === 'insulation' && pct >= 50) {
+            inst.testMsg = `${(kv * pct / 100).toFixed(1)}kV 閃絡 ✕`;
+            testLog(`⚡ ${lbl}：升壓至 ${(kv * pct / 100).toFixed(1)}kV 時 ${tl} 絕緣崩潰閃絡！——判定【不合格】✕ 該設備不得投入運轉。`);
+            return { ok: true, target: tl, pass: false, breakdown_kV: +(kv * pct / 100).toFixed(1) };
+          }
+          testLog(`${lbl}：${(kv * pct / 100).toFixed(1)}kV⋯`);
+        }
+        await delay(800);
+        const leak = +(kv / insulOf(tgt) * 8).toFixed(2);
+        inst.testMsg = `${kv}kV 保持 ✓（${leak}mA）`;
+        testLog(`${lbl}：${kv}kV 保持 60 秒（模擬），洩漏電流 ${leak}mA——判定【合格】✓`);
+        return { ok: true, target: tl, pass: true, leak_mA: leak };
+      }
+      if (kind === 'ctt') {
+        const tgt = probeTarget(uid, 'P1', (p, d) => d.ctsig);
+        if (!tgt) return { ok: false, error: 'P1/P2 沒有接到 CT 的一次側端子' };
+        const ufW = buildUF('wires');
+        const sNet = [ufW.find(tid(uid, 'S1')), ufW.find(tid(uid, 'S2'))];
+        const sOk = [ufW.find(tid(tgt.uid, 'k')), ufW.find(tid(tgt.uid, 'l'))].some(n => sNet.includes(n));
+        if (!sOk) return { ok: false, error: 'S1/S2 沒有接到同一顆 CT 的 k/l 二次端子' };
+        const tl = labelOf(tgt.uid, '').trim();
+        const inj = pv('inject');
+        const nameplate = tgt.ratio !== undefined ? tgt.ratio : defOf(tgt).param.def;
+        testLog(`${lbl}：對 ${tl} 一次側注入 ${inj}A⋯`);
+        await delay(1200);
+        if (tgt.defect === 'polarity') {
+          inst.testMsg = '極性【反】✕';
+          testLog(`${lbl}：${tl} 二次輸出相位相反——【極性接反】✕ 保護電驛會誤動作，必須改正 k/l。`);
+          return { ok: true, target: tl, pass: false, fault: 'polarity' };
+        }
+        const err2 = tgt.defect === 'ratio' ? 0.22 : (Math.random() * 0.01 - 0.005);
+        const sec = +(inj / (nameplate / 5) * (1 + err2)).toFixed(3);
+        const measured = +(inj / sec * 5).toFixed(1);
+        const okR = Math.abs(measured - nameplate) / nameplate < 0.05;
+        inst.testMsg = `${measured}/5A ${okR ? '✓' : '✕'}`;
+        testLog(okR
+          ? `${lbl}：${tl} 實測變比 ${measured}/5A（銘牌 ${nameplate}/5A）、極性正確——判定【合格】✓`
+          : `${lbl}：${tl} 實測變比 ${measured}/5A 與銘牌 ${nameplate}/5A 偏差超過 5%——判定【不合格】✕`);
+        return { ok: true, target: tl, pass: okR, measured_ratio: measured, nameplate };
+      }
+      if (kind === 'rts') {
+        const ufW = buildUF('wires');
+        const iNet = [ufW.find(tid(uid, 'I1')), ufW.find(tid(uid, 'I2'))];
+        const ryP = st.parts.find(q => q.id === 'ry' &&
+          [ufW.find(tid(q.uid, 'S1')), ufW.find(tid(q.uid, 'S2'))].some(n => iNet.includes(n)));
+        if (!ryP) return { ok: false, error: 'I1/I2 沒有接到 RY51 的 S1/S2' };
+        const tl = labelOf(ryP.uid, '').trim();
+        const inj = pv('inject');
+        const pickup = ryP.pickup !== undefined ? ryP.pickup : defOf(ryP).param.def;
+        testLog(`${lbl}：對 ${tl} 注入 ${inj}A（一次換算，整定 ${pickup}A）⋯`);
+        await delay(600);
+        if (inj <= pickup) {
+          inst.testMsg = '未動作（<整定）✓';
+          testLog(`${lbl}：注入 ${inj}A ≤ 始動值 ${pickup}A，電驛不動作——低於整定不動作屬正常 ✓（要驗曲線請注入更大電流）`);
+          return { ok: true, target: tl, pass: true, note: 'below-pickup' };
+        }
+        const M = inj / pickup;
+        const expected = Math.min(30, Math.max(0.15, 0.2 * 3 / (M - 1)));
+        const factor = ryP.defect === 'slow' ? 1.6 : (0.96 + Math.random() * 0.08);
+        const measured = +(expected * factor).toFixed(2);
+        await delay(Math.min(2500, expected * 1000));
+        // 出口有接斷路器就真的跳給你看
+        const tNet = [ufW.find(tid(ryP.uid, 'T1')), ufW.find(tid(ryP.uid, 'T2'))];
+        const brk = st.parts.find(q => defOf(q).breaker &&
+          [ufW.find(tid(q.uid, 'TC1')), ufW.find(tid(q.uid, 'TC2'))].some(n => tNet.includes(n)));
+        if (brk && brk.on) { brk.tripped = true; brk.on = false; testLog(`${labelOf(brk.uid, '').trim()} 由電驛出口跳脫（試驗注入）⚡`); }
+        const okT = Math.abs(measured - expected) / expected <= 0.10;
+        inst.testMsg = `t=${measured}s ${okT ? '✓' : '✕'}`;
+        testLog(okT
+          ? `${lbl}：${tl} 於 ${measured}s 動作（曲線期望 ${expected.toFixed(2)}s，M=${M.toFixed(2)}）——判定【合格】✓`
+          : `${lbl}：${tl} 於 ${measured}s 動作，偏離曲線期望 ${expected.toFixed(2)}s 超過 ±10%——判定【不合格】✕ 電驛需校驗或汰換。`);
+        return { ok: true, target: tl, pass: okT, measured_s: measured, expected_s: +expected.toFixed(2) };
+      }
+      return { ok: false, error: '未知試驗器' };
+    } finally {
+      inst.testing = false;
+      render();
+      if (st.onSim) st.onSim();
+    }
+  }
+
+  function injectDefect(uid) {
+    const p = byUid(uid);
+    if (!p) return { ok: false, error: '找不到元件' };
+    const d = defOf(p);
+    if (d.ctsig) p.defect = p.defect === null || p.defect === undefined ? 'polarity' : p.defect === 'polarity' ? 'ratio' : null;
+    else if (p.id === 'ry') p.defect = p.defect ? null : 'slow';
+    else if (INSUL[p.id] !== undefined) p.defect = p.defect ? null : 'insulation';
+    else return { ok: false, error: `${labelOf(p.uid, '').trim()} 不支援缺陷注入` };
+    pushLog(p.defect
+      ? `💉 已對 ${labelOf(p.uid, '').trim()} 注入缺陷【${p.defect === 'insulation' ? '絕緣劣化' : p.defect === 'polarity' ? 'CT 極性反' : p.defect === 'ratio' ? '變比異常' : '動作遲緩'}】——試驗時會被抓出來。`
+      : `✨ ${labelOf(p.uid, '').trim()} 缺陷已清除（設備健康）。`);
+    render();
+    if (st.onSim) st.onSim();
+    return { ok: true, defect: p.defect };
+  }
+
   /* Agent／模擬面板共用：設定元件參數 */
   function setParam(uid, value) {
     const p = byUid(uid);
@@ -1962,6 +2208,17 @@ CF.Ind = (function () {
     { id: 'ehv_seq', tier: 'hv', name: '161kV 停送電順序演練', desc: '全開狀態起步：由電源側往負載側 DS-161→GCB-161→VCB 逐級投入；停電反向操作。' },
     { id: 'ehv_arc', tier: 'hv', name: '事故重現：161kV 帶載拉 DS', desc: '特高壓帶載開斷的弧光比 11.4kV 更劇烈——負面教材，運轉中拉 DS-161 看後果。' },
     { id: 'ehv_relay', tier: 'hv', name: '161kV CT＋RY51 保護', desc: '特高壓側電流極小（÷424）：CT-161 讀值、始動 0.03A 一次、反時限跳 GCB——整定換算的教學。' },
+    // ── 設備試驗（竣工／維護） ──
+    { id: 'test_meg_motor', tier: 'test', name: '馬達絕緣電阻測試', desc: '第一課：Megger L 探棒接馬達、E 接地，1000V 測絕緣——低壓設備 ≥1MΩ 合格。' },
+    { id: 'test_meg_bad', tier: 'test', name: '缺陷判讀：受潮馬達', desc: '這顆馬達已注入絕緣劣化（💉）：跑一次測試看「不合格」判定長什麼樣，再清除缺陷重測對照。' },
+    { id: 'test_meg_tr', tier: 'test', name: '變壓器絕緣測試（高壓級）', desc: '11.4kV 配電變壓器：判定門檻提高到 ≥10MΩ——電壓等級越高要求越嚴。' },
+    { id: 'test_hipot_tr', tier: 'test', name: '變壓器 AC 耐壓試驗', desc: '升壓 22kV 保持一分鐘（模擬加速）、看洩漏電流——竣工送電前的最後關卡。' },
+    { id: 'test_hipot_bad', tier: 'test', name: '耐壓崩潰重現', desc: '受試變壓器已注入缺陷：升壓到一半就閃絡給你看——這就是為什麼耐壓前要先量絕緣電阻。' },
+    { id: 'test_ct_ratio', tier: 'test', name: 'CT 變比試驗', desc: '一次注入 10A、量二次輸出：實測變比與銘牌比對（±5%）。' },
+    { id: 'test_ct_bad', tier: 'test', name: '缺陷判讀：CT 極性反', desc: '這顆 CT 的 k/l 接反了（💉）：測試會抓出極性錯誤——接反的 CT 會讓保護誤動作。' },
+    { id: 'test_relay_inject', tier: 'test', name: 'RY51 注入測試', desc: '注入 1A（整定 0.5A、M=2）：量實際動作時間與反時限曲線比對 ±10%；出口接著 VCB 會真的跳。' },
+    { id: 'test_relay_bad', tier: 'test', name: '缺陷判讀：電驛動作遲緩', desc: '這顆電驛已注入「動作遲緩」（💉）：實測時間偏離曲線 60%——校驗不合格的典型樣態。' },
+    { id: 'test_full', tier: 'test', name: '竣工試驗總和演練', desc: '完整試驗台：Megger＋CT 測試器＋電驛測試器對整組受電設備逐項驗收——全部合格才能送電。' },
     // ── PLC 可程式控制 ──
     { id: 'plc_selfhold', tier: 'plc', name: 'PLC 自保持（梯形圖）', desc: '按鈕接 PLC 輸入、Y0 驅動 MC：自保持邏輯寫在梯形圖裡，雙擊 PLC 開編輯器。' },
     { id: 'plc_jog', tier: 'plc', name: 'PLC 寸動', desc: '最小程式：X0 常開直通 Y0——按著才轉。跟硬體寸動對照。' },
@@ -2226,6 +2483,43 @@ CF.Ind = (function () {
       W(M, '13', GO, '3'); W(M, '14', GO, '4');
       W(M, 'A2', H, '95'); W(H, '96', TX, 'S2');
       W(GL, 'X1', M, 'A1'); W(GL, 'X2', M, 'A2');
+    } else if (pid.startsWith('test_')) {
+      const G = A('gnd');
+      if (pid === 'test_meg_motor' || pid === 'test_meg_bad') {
+        const M = A('meg'), MO = A('motor');
+        W(M, 'L', MO, 'U'); W(M, 'E', G, 'G1');
+        if (pid === 'test_meg_bad') byUid(MO).defect = 'insulation';
+      } else if (pid === 'test_meg_tr') {
+        const M = A('meg'), T = A('hvtr');
+        W(M, 'L', T, '1'); W(M, 'E', G, 'G1');
+        byUid(M).volt = 5000;
+      } else if (pid === 'test_hipot_tr' || pid === 'test_hipot_bad') {
+        const H = A('hipot'), T = A('hvtr');
+        W(H, 'H', T, '1'); W(H, 'R', G, 'G1');
+        if (pid === 'test_hipot_bad') byUid(T).defect = 'insulation';
+      } else if (pid === 'test_ct_ratio' || pid === 'test_ct_bad') {
+        const C = A('ctt'), T = A('cthv');
+        W(C, 'P1', T, '1'); W(C, 'P2', T, '2');
+        W(C, 'S1', T, 'k'); W(C, 'S2', T, 'l');
+        if (pid === 'test_ct_bad') byUid(T).defect = 'polarity';
+      } else if (pid === 'test_relay_inject' || pid === 'test_relay_bad') {
+        const R = A('rts'), RY = A('ry'), V = A('vcb');
+        W(R, 'I1', RY, 'S1'); W(R, 'I2', RY, 'S2');
+        W(RY, 'T1', V, 'TC1'); W(RY, 'T2', V, 'TC2');
+        byUid(V).on = true;
+        byUid(R).inject = 1;
+        if (pid === 'test_relay_bad') byUid(RY).defect = 'slow';
+      } else if (pid === 'test_full') {
+        const M = A('meg'), C = A('ctt'), R = A('rts');
+        const T = A('hvtr'), CT2 = A('cthv'), RY = A('ry'), V = A('vcb'), MO = A('motor');
+        W(M, 'L', T, '1'); W(M, 'E', G, 'G1');
+        W(C, 'P1', CT2, '1'); W(C, 'P2', CT2, '2'); W(C, 'S1', CT2, 'k'); W(C, 'S2', CT2, 'l');
+        W(R, 'I1', RY, 'S1'); W(R, 'I2', RY, 'S2');
+        W(RY, 'T1', V, 'TC1'); W(RY, 'T2', V, 'TC2');
+        byUid(V).on = true;
+        byUid(R).inject = 1;
+        void MO;
+      }
     } else if (pid.startsWith('ehv_')) {
       // 161kV 串級：161→(DS161→GCB161→CT161)→MTX161→11.4kV→(VCB)→HVTR→380V→NFB→馬達
       const chain161 = closed => {
@@ -2607,11 +2901,20 @@ CF.Ind = (function () {
   }
 
   /* ================= 持久化 ================= */
-  const PARAM_KEYS = ['preset', 'setA', 'loadA', 'ampsA', 'volt', 'startDelay', 'rateA', 'ratio', 'kva', 'pickup'];
+  const PARAM_KEYS = ['preset', 'setA', 'loadA', 'ampsA', 'volt', 'startDelay', 'rateA', 'ratio', 'kva', 'pickup', 'inject'];
+  /* 受試設備的健康絕緣值（MΩ）與判定門檻；注入缺陷後絕緣掉到 0.4MΩ */
+  const INSUL = { motor: 2000, motor6: 2000, mc: 1000, hvtr: 5000, mtx161: 8000, mtx345: 8000, cthv: 3000, ct161: 3000, vcb: 5000, gcb161: 6000, gcb345: 6000 };
+  const insulOf = p => (p.defect === 'insulation' ? 0.4 : (INSUL[p.id] || 1500));
+  const insulNeed = p => {
+    const doms = defOf(p).terms.map(t => t.dom);
+    return (doms.includes('uhv') || doms.includes('ehv') || doms.includes('hv')) ? 10 : 1;
+  };
   function serialize() {
     return {
       parts: st.parts.map(p => {
         const o = { uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped };
+        if (p.defect) o.defect = p.defect;
+        if (p._row !== undefined) o._row = p._row;
         for (const k of PARAM_KEYS) if (p[k] !== undefined) o[k] = p[k];
         return o;
       }),
@@ -2624,6 +2927,8 @@ CF.Ind = (function () {
     if (!d || !d.parts) return;
     st.parts = d.parts.filter(p => DEFS[p.id]).map(p => {
       const o = { uid: p.uid, id: p.id, x: p.x, y: p.y, on: p.on, tripped: p.tripped };
+      if (p.defect) o.defect = p.defect;
+      if (p._row !== undefined) o._row = p._row;
       for (const k of PARAM_KEYS) if (p[k] !== undefined) o[k] = p[k];
       return o;
     });
@@ -2710,6 +3015,8 @@ CF.Ind = (function () {
     toggleOutage,
     operateSwitch,
     resetProtection,
+    runTest,
+    injectDefect,
     viewInfo() { return { scale: st.scale, ox: st.ox, oy: st.oy, zoom: st.zoom }; },
     termScreenXY(uid, term) {
       const p = byUid(uid);
@@ -2795,7 +3102,8 @@ CF.Ind = (function () {
           uid: p.uid, id: p.id, def: d, label, pressed: p.pressed, on: p.on, tripped: p.tripped,
           energized: p.energized, lit: p.lit, run: p.run, mode: p.mode, powered: p.powered,
           preset: p.preset, reading: p.reading, pos: p.pos, running: p.running, startAt: p.startAt,
-          outage: p.outage, scEn: p.scEn, paramVal, fault: p.fault, ryOn: p.ryAcc > 0
+          outage: p.outage, scEn: p.scEn, paramVal, fault: p.fault, ryOn: p.ryAcc > 0,
+          testMsg: p.testMsg, testing: p.testing, defect: p.defect
         };
       });
     }
