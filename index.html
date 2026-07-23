@@ -64,6 +64,7 @@
       <div class="mode-switch">
         <button id="modeViewBtn" class="mode-btn active" type="button">3D 檢視</button>
         <button id="modeEditBtn" class="mode-btn" type="button">自由編輯</button>
+        <button id="modeIndBtn" class="mode-btn" type="button">工業配線</button>
       </div>
     </div>
 
@@ -108,6 +109,19 @@
       <div id="partPalette" class="part-palette"></div>
     </div>
 
+    <!-- 工業配線工具列 -->
+    <div id="indToolbar" class="edit-toolbar" hidden>
+      <div class="edit-row">
+        <button id="indToolWire" class="edit-tool active" type="button">拉線</button>
+        <button id="indToolDelete" class="edit-tool" type="button">刪除</button>
+        <span class="edit-sep"></span>
+        <button id="indExample" class="edit-act" type="button">載入自保持範例</button>
+        <button id="indClear" class="edit-act" type="button">清空</button>
+        <span id="indErc" class="erc-badge erc-ok">ERC ✓</span>
+      </div>
+      <div id="indPalette" class="part-palette"></div>
+    </div>
+
     <div id="stage3d" class="stage-canvas">
       <canvas id="board3d"></canvas>
       <div class="canvas-hint">拖曳旋轉 · 滾輪縮放</div>
@@ -115,6 +129,10 @@
     <div id="stage2d" class="stage-canvas stage-2d" hidden>
       <canvas id="editor2d"></canvas>
       <div class="canvas-hint">同一直排的孔彼此導通 · 點兩下被動元件改規格／切換開關 · Delete 刪除選取</div>
+    </div>
+    <div id="stageInd" class="stage-canvas stage-2d" hidden>
+      <canvas id="indCanvas"></canvas>
+      <div class="canvas-hint">點兩個端子拉線 · 點兩下 NFB 切換 ON/OFF · 銀色端子＝主迴路、橙色＝控制迴路</div>
     </div>
 
     <div class="stage-status">
@@ -255,6 +273,7 @@
 <script src="assets/js/codegen.js"></script>
 <script src="assets/js/board3d.js"></script>
 <script src="assets/js/editor.js"></script>
+<script src="assets/js/industrial.js"></script>
 <script src="assets/js/sim.js"></script>
 <script src="assets/js/zip.js"></script>
 <script src="assets/js/store.js"></script>

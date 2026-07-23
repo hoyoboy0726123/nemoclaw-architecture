@@ -9,7 +9,10 @@
     files: [], activeFile: 0, activeTab: 'code',
     pinLabels: true, panMode: false,
     editorInited: false,
+    indInited: false,
+    savedInd: null,
     simRefs: null,
+    indRefs: null,
     pinOverrides: {},         // `${partId}|${pinName}` → gpio（跨重整保留腳位修改）
     lastGenText: null,
     savedEditor: null,        // 開機時從 IndexedDB 載入的編輯器快照
@@ -24,11 +27,12 @@
     persistTimer = setTimeout(() => {
       CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
       if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
+      if (state.indInited) CF.Store.set('ind', CF.Ind.serialize());
     }, 400);
   }
 
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.plan;
+  const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.mode === 'ind' ? CF.Ind.getPlan() : state.plan;
 
   /* ---------------- 語法上色 ---------------- */
   function hlCpp(code) {
@@ -185,15 +189,19 @@
   function refreshAll() {
     const plan = currentPlan();
     if (!plan) return;
-    state.files = CF.genFiles(plan);
+    state.files = plan.industrial ? CF.Ind.genFiles() : CF.genFiles(plan);
     if (state.activeFile >= state.files.length) state.activeFile = 0;
     renderStage(plan);
     renderCode();
     renderWiring(plan);
     renderChecks(plan);
     renderDocs(plan);
-    CF.Sim.load(plan);
-    renderSimPanel(plan);
+    if (plan.industrial) {
+      renderIndSimPanel();
+    } else {
+      CF.Sim.load(plan);
+      renderSimPanel(plan);
+    }
     persist();
   }
 
@@ -202,12 +210,16 @@
     if (state.mode === mode) return;
     state.mode = mode;
     CF.Sim.stop();
+    if (state.indInited && mode !== 'ind') CF.Ind.simStop();
     $('#modeViewBtn').classList.toggle('active', mode === 'view');
     $('#modeEditBtn').classList.toggle('active', mode === 'edit');
+    $('#modeIndBtn').classList.toggle('active', mode === 'ind');
     $('#viewToolbar').hidden = mode !== 'view';
     $('#editToolbar').hidden = mode !== 'edit';
+    $('#indToolbar').hidden = mode !== 'ind';
     $('#stage3d').hidden = mode !== 'view';
     $('#stage2d').hidden = mode !== 'edit';
+    $('#stageInd').hidden = mode !== 'ind';
     if (mode === 'edit') {
       if (!state.editorInited) {
         CF.Editor.init($('#editor2d'), { onChange: () => refreshAll() });
@@ -222,6 +234,17 @@
         $('#editConnSel').value = CF.Editor.getState().conn;
       } else {
         CF.Editor.resize();
+      }
+    } else if (mode === 'ind') {
+      if (!state.indInited) {
+        CF.Ind.init($('#indCanvas'), { onChange: () => refreshAll(), onSim: () => updateIndSimUi() });
+        state.indInited = true;
+        if (state.savedInd) {
+          CF.Ind.restore(state.savedInd);
+          state.savedInd = null;
+        }
+      } else {
+        CF.Ind.resize();
       }
     } else {
       CF.Board3D.setPlan(state.plan);
@@ -244,6 +267,13 @@
     if (plan.editor) {
       badge.textContent = plan.errN ? `ERC ✕ ${plan.errN} 項錯誤` : 'ERC ✓ 全部通過';
       badge.className = 'erc-badge ' + (plan.errN ? 'erc-bad' : 'erc-ok');
+    }
+    if (plan.industrial) {
+      const ib = $('#indErc');
+      ib.textContent = plan.errN ? `ERC ✕ ${plan.errN} 項錯誤` : 'ERC ✓ 全部通過';
+      ib.className = 'erc-badge ' + (plan.errN ? 'erc-bad' : 'erc-ok');
+      $('.stat-done').classList.toggle('bad', plan.errN > 0);
+      $('#doneBox').textContent = plan.errN > 0 ? '✕' : '✓';
     }
   }
 
@@ -583,6 +613,116 @@
     if (refs.encPos) refs.encPos.textContent = 'POS ' + o.encoderPos;
   }
 
+  /* ---------------- 工業配線模擬面板 ---------------- */
+  function renderIndSimPanel() {
+    const host = $('#simBody');
+    host.innerHTML = '';
+    state.indRefs = null;
+    if (!state.indInited) return;
+    const refs = {};
+
+    const powerRow = document.createElement('div');
+    powerRow.className = 'sim-power-row';
+    powerRow.innerHTML = `<button id="indPowerBtn" class="sim-power" type="button">通電 ▶</button>
+      <span class="sim-note">通電前會先跑 ERC；相間短路會立即跳電。</span>`;
+    host.appendChild(powerRow);
+    const blocked = document.createElement('div');
+    blocked.className = 'sim-blocked';
+    blocked.hidden = true;
+    host.appendChild(blocked);
+    refs.blocked = blocked;
+
+    const opSec = document.createElement('div');
+    opSec.className = 'sim-sec';
+    opSec.textContent = 'OPERATE / 盤面操作';
+    host.appendChild(opSec);
+    const ops = document.createElement('div');
+    ops.className = 'sim-ev-row';
+    host.appendChild(ops);
+    for (const p of CF.Ind.getParts()) {
+      if (p.def.momentary) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `⬇ 按住 ${p.def.label}`;
+        b.addEventListener('pointerdown', () => { CF.Ind.pressPB(p.uid, true); b.classList.add('held'); });
+        const up = () => { CF.Ind.pressPB(p.uid, false); b.classList.remove('held'); };
+        b.addEventListener('pointerup', up);
+        b.addEventListener('pointerleave', up);
+        ops.appendChild(b);
+      }
+      if (p.def.toggle) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = '🔌 NFB 切換';
+        b.addEventListener('click', () => { CF.Ind.toggleNfb(p.uid); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
+      if (p.def.trip) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = '⚡ 模擬過載跳脫／復歸';
+        b.addEventListener('click', () => { CF.Ind.tripThry(p.uid); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
+    }
+    if (!ops.children.length) {
+      const n = document.createElement('div');
+      n.className = 'sim-note';
+      n.textContent = '盤面沒有可操作元件；請先加入按鈕／NFB，或載入自保持範例。';
+      host.appendChild(n);
+    }
+
+    const stSec = document.createElement('div');
+    stSec.className = 'sim-sec';
+    stSec.textContent = 'STATUS / 器件狀態';
+    host.appendChild(stSec);
+    const stat = document.createElement('div');
+    stat.className = 'sim-outs';
+    host.appendChild(stat);
+    refs.status = stat;
+
+    const logSec = document.createElement('div');
+    logSec.className = 'sim-sec';
+    logSec.textContent = 'LOG / 事件紀錄';
+    host.appendChild(logSec);
+    const logBox = document.createElement('div');
+    logBox.className = 'sim-mqtt';
+    logBox.innerHTML = '<div class="sim-log" data-log></div>';
+    host.appendChild(logBox);
+    refs.log = logBox.querySelector('[data-log]');
+
+    $('#indPowerBtn').addEventListener('click', () => {
+      if (CF.Ind.isRunning()) { CF.Ind.simStop(); updateIndSimUi(); return; }
+      const r = CF.Ind.simStart();
+      if (!r.ok) { blocked.hidden = false; blocked.textContent = `⚡ 無法通電 — ${r.msg}`; }
+      else blocked.hidden = true;
+      updateIndSimUi();
+    });
+
+    state.indRefs = refs;
+    updateIndSimUi();
+  }
+
+  function updateIndSimUi() {
+    const refs = state.indRefs;
+    if (!refs) return;
+    const running = CF.Ind.isRunning();
+    const btn = $('#indPowerBtn');
+    if (btn) { btn.textContent = running ? '斷電 ■' : '通電 ▶'; btn.classList.toggle('off', running); }
+    $('#simStatus').textContent = running ? 'RUNNING' : 'POWER OFF';
+    const chips = [];
+    for (const p of CF.Ind.getParts()) {
+      if (p.def.coil) chips.push(`<div class="sim-out"><div class="k">${p.def.label}</div><div class="sim-chipval ${p.energized ? 'on' : ''}">${p.energized ? '吸持 🧲' : '釋放'}</div></div>`);
+      if (p.def.motor) chips.push(`<div class="sim-out"><div class="k">MOTOR</div><div class="sim-chipval ${p.run ? 'on' : ''}">${p.run ? 'RUN ▶' : 'STOP ■'}</div></div>`);
+      if (p.def.load) chips.push(`<div class="sim-out"><div class="k">${p.def.name.includes('綠') ? 'PL 綠' : 'PL 紅'}</div><div class="sim-led ${p.lit ? 'on' : ''}" style="margin:0 auto;${p.lit && p.def.lamp === '#3ddc84' ? 'background:#3ddc84;border-color:#1f8a4d;box-shadow:0 0 14px rgba(61,220,132,.8);' : ''}"></div></div>`);
+      if (p.def.toggle) chips.push(`<div class="sim-out"><div class="k">NFB</div><div class="sim-chipval ${p.on ? 'on' : ''}">${p.on ? 'ON' : 'OFF'}</div></div>`);
+      if (p.def.trip && p.tripped) chips.push(`<div class="sim-out"><div class="k">TH-RY</div><div class="sim-chipval" style="color:var(--amber)">TRIP ⚡</div></div>`);
+    }
+    refs.status.innerHTML = chips.join('') || '<div class="sim-note">尚無器件。</div>';
+    refs.log.innerHTML = CF.Ind.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
+    refs.log.scrollTop = refs.log.scrollHeight;
+  }
+
   function updateSimLog(log) {
     const refs = state.simRefs;
     if (!refs || !refs.log) return;
@@ -635,6 +775,17 @@
   /* ---------------- 匯出 ---------------- */
   function exportProject() {
     const plan = currentPlan();
+    if (plan.industrial) {
+      const entries = state.files.map(f => ({ name: `nemoclaw-panel/${f.name}`, content: f.content }));
+      const blob = CF.makeZip(entries);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'nemoclaw-panel.zip';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+      return;
+    }
     const slug = `nemoclaw-lab-${plan.board.id}${plan.conn !== 'none' ? '-' + plan.conn : ''}`;
     const netRows = plan.nets.map(n => `| ${String(n.id + 1).padStart(2, '0')} | ${n.from} | ${n.to.replace(/^→ /, '')} |`).join('\n');
     const readme = [
@@ -671,6 +822,31 @@
 
     $('#modeViewBtn').addEventListener('click', () => setMode('view'));
     $('#modeEditBtn').addEventListener('click', () => setMode('edit'));
+    $('#modeIndBtn').addEventListener('click', () => setMode('ind'));
+
+    // 工業配線工具列
+    $('#indToolWire').addEventListener('click', () => {
+      CF.Ind.setTool('wire');
+      $('#indToolWire').classList.add('active');
+      $('#indToolDelete').classList.remove('active');
+    });
+    $('#indToolDelete').addEventListener('click', () => {
+      CF.Ind.setTool('delete');
+      $('#indToolDelete').classList.add('active');
+      $('#indToolWire').classList.remove('active');
+    });
+    $('#indExample').addEventListener('click', () => CF.Ind.loadExample());
+    $('#indClear').addEventListener('click', () => CF.Ind.clear());
+    const ipal = $('#indPalette');
+    for (const id of CF.Ind.PALETTE) {
+      const d = CF.Ind.DEFS[id];
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'part-chip';
+      b.innerHTML = `<i style="background:${d.color}"></i>${d.name.split('（')[0]}`;
+      b.addEventListener('click', () => CF.Ind.addPart(id));
+      ipal.appendChild(b);
+    }
 
     document.querySelectorAll('.tab').forEach(t => {
       t.addEventListener('click', () => {
@@ -940,6 +1116,7 @@
     try {
       const saved = await CF.Store.get('app');
       state.savedEditor = await CF.Store.get('editor');
+      state.savedInd = await CF.Store.get('ind');
       if (saved && saved.reqText) {
         state.reqText = saved.reqText;
         state.pinOverrides = saved.pinOverrides || {};
@@ -947,6 +1124,7 @@
       }
       generate();
       if (saved && saved.mode === 'edit' && state.savedEditor) setMode('edit');
+      else if (saved && saved.mode === 'ind' && state.savedInd) setMode('ind');
     } catch (e) {
       generate();
     }
