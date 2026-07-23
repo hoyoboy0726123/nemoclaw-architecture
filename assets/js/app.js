@@ -950,7 +950,7 @@
     const IND_TIERS = [
       ['basic', '基礎工配（丙級）', false],
       ['adv', '進階／電力配電（乙級・受電盤）', true],
-      ['hv', '高壓受電（11.4kV 受電盤）', true],
+      ['hv', '高壓／特高壓受電（11.4kV–345kV）', true],
       ['plc', 'PLC 可程式控制', true]
     ];
     for (const [tier, title, collapsed] of IND_TIERS) {

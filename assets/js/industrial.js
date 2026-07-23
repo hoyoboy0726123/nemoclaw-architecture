@@ -291,6 +291,7 @@ CF.Ind = (function () {
     hvin: {
       id: 'hvin', name: '台電高壓進線（11.4kV）', label: 'HV-IN', cls: 'SOURCE', w: 96, h: 64, row: 0,
       color: '#4a2440', hvsrc: true, outage: true, single: true,
+      srcTerms: ['H1', 'H2', 'H3'], srcDom: 'hv', setName: '台電11.4kV',
       terms: [{ n: 'H1', dx: 20, dy: 64, dom: 'hv' }, { n: 'H2', dx: 48, dy: 64, dom: 'hv' }, { n: 'H3', dx: 76, dy: 64, dom: 'hv' }],
       bridges: () => [], allPairs: [],
       why: '台電 11.4kV 三相高壓引入。高壓域（紫色端子）絕不可與低壓主迴路或控制迴路直接相接。模擬面板可切「台電停電」。',
@@ -363,7 +364,7 @@ CF.Ind = (function () {
     },
     cthv: {
       id: 'cthv', name: 'CT 比流器', label: 'CT', cls: 'METER', w: 64, h: 84, row: 0,
-      color: '#33424e',
+      color: '#33424e', ctsig: true,
       param: { key: 'ratio', name: 'CT 一次額定', unit: 'A', min: 5, max: 600, def: 50 },
       terms: [
         { n: '1', dx: 14, dy: 0, dom: 'hv' }, { n: '3', dx: 32, dy: 0, dom: 'hv' }, { n: '5', dx: 50, dy: 0, dom: 'hv' },
@@ -390,7 +391,7 @@ CF.Ind = (function () {
     },
     hvtr: {
       id: 'hvtr', name: '配電變壓器（11.4kV→380V）', label: 'TR-3φ', cls: 'SOURCE', w: 110, h: 92, row: 0,
-      color: '#54432e', hvtr: true,
+      color: '#54432e', hvtr: true, xfmr: { from: 'hv', to: 'main', ratio: 30, disp: '11.4k/380' },
       param: { key: 'kva', name: '容量', unit: 'kVA', min: 50, max: 2000, def: 500 },
       terms: [
         { n: '1', dx: 22, dy: 0, dom: 'hv' }, { n: '3', dx: 55, dy: 0, dom: 'hv' }, { n: '5', dx: 88, dy: 0, dom: 'hv' },
@@ -401,10 +402,126 @@ CF.Ind = (function () {
       pinNote: '1/3/5 接高壓（經 VCB/PF）；2/4/6 出 380V 低壓主迴路',
       alts: [['模鑄式變壓器', '免油、防火'], ['雙變壓器分列', '重要負載分段供電']]
     },
+    /* ── 特高壓（161kV dom:'ehv'／345kV dom:'uhv'） ── */
+    ehvin161: {
+      id: 'ehvin161', name: '台電特高壓進線（161kV）', label: '161kV-IN', cls: 'SOURCE', w: 96, h: 64, row: 0,
+      color: '#24304f', hvsrc: true, outage: true, single: true,
+      srcTerms: ['E1', 'E2', 'E3'], srcDom: 'ehv', setName: '台電161kV',
+      terms: [{ n: 'E1', dx: 20, dy: 64, dom: 'ehv' }, { n: 'E2', dx: 48, dy: 64, dom: 'ehv' }, { n: 'E3', dx: 76, dy: 64, dom: 'ehv' }],
+      bridges: () => [], allPairs: [],
+      why: '台電 161kV 特高壓引入（科技廠、鋼鐵廠等特高壓用戶）。經 DS161→GCB161→主變降至 11.4kV。可模擬台電停電。',
+      pinNote: 'E1/E2/E3 → DS161 → GCB161 → 主變 161kV/11.4kV',
+      alts: [['雙迴路 161kV', '重要用戶標準'], ['69kV 受電', '中型用戶']]
+    },
+    ehvin345: {
+      id: 'ehvin345', name: '台電超高壓進線（345kV）', label: '345kV-IN', cls: 'SOURCE', w: 96, h: 64, row: 0,
+      color: '#4f2430', hvsrc: true, outage: true, single: true,
+      srcTerms: ['U1', 'U2', 'U3'], srcDom: 'uhv', setName: '台電345kV',
+      terms: [{ n: 'U1', dx: 20, dy: 64, dom: 'uhv' }, { n: 'U2', dx: 48, dy: 64, dom: 'uhv' }, { n: 'U3', dx: 76, dy: 64, dom: 'uhv' }],
+      bridges: () => [], allPairs: [],
+      why: '台電 345kV 超高壓輸電進線（E/S 超高壓變電所）。經 GCB345 與聯絡主變降至 161kV，再逐級降壓。',
+      pinNote: 'U1/U2/U3 → DS345 → GCB345 → 主變 345kV/161kV',
+      alts: [['GIS 全套', '氣體絕緣變電所'], ['雙母線＋一次半斷路器', '樞紐變電所架構（規劃中）']]
+    },
+    ds161: {
+      id: 'ds161', name: 'DS 隔離開關（161kV）', label: 'DS-161', cls: 'CONTROL', w: 76, h: 84, row: 0,
+      color: '#2e3a54', dsw: true,
+      terms: [
+        { n: '1', dx: 16, dy: 0, dom: 'ehv' }, { n: '3', dx: 38, dy: 0, dom: 'ehv' }, { n: '5', dx: 60, dy: 0, dom: 'ehv' },
+        { n: '2', dx: 16, dy: 84, dom: 'ehv' }, { n: '4', dx: 38, dy: 84, dom: 'ehv' }, { n: '6', dx: 60, dy: 84, dom: 'ehv' }
+      ],
+      bridges: inst => (inst.on && !inst.fault) ? [['1', '2'], ['3', '4'], ['5', '6']] : [],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6']],
+      why: '161kV 隔離開關：同樣只能無載操作——特高壓帶載開斷的弧光比 11.4kV 更劇烈。送電 DS→GCB、停電 GCB→DS。',
+      pinNote: '1/3/5 電源側、2/4/6 負載側；無載操作！',
+      alts: [['接地開關', '停電檢修接地'], ['GIS 內建 DS', '氣體絕緣']]
+    },
+    ds345: {
+      id: 'ds345', name: 'DS 隔離開關（345kV）', label: 'DS-345', cls: 'CONTROL', w: 76, h: 84, row: 0,
+      color: '#542e3a', dsw: true,
+      terms: [
+        { n: '1', dx: 16, dy: 0, dom: 'uhv' }, { n: '3', dx: 38, dy: 0, dom: 'uhv' }, { n: '5', dx: 60, dy: 0, dom: 'uhv' },
+        { n: '2', dx: 16, dy: 84, dom: 'uhv' }, { n: '4', dx: 38, dy: 84, dom: 'uhv' }, { n: '6', dx: 60, dy: 84, dom: 'uhv' }
+      ],
+      bridges: inst => (inst.on && !inst.fault) ? [['1', '2'], ['3', '4'], ['5', '6']] : [],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6']],
+      why: '345kV 隔離開關：無載操作專用，提供檢修隔離點。',
+      pinNote: '1/3/5 電源側、2/4/6 負載側；無載操作！',
+      alts: [['GIS 內建 DS', '氣體絕緣變電所']]
+    },
+    gcb161: {
+      id: 'gcb161', name: 'GCB 氣體斷路器（161kV）', label: 'GCB-161', cls: 'CONTROL', w: 88, h: 84, row: 0,
+      color: '#1f3a4f', breaker: true,
+      terms: [
+        { n: '1', dx: 16, dy: 0, dom: 'ehv' }, { n: '3', dx: 40, dy: 0, dom: 'ehv' }, { n: '5', dx: 64, dy: 0, dom: 'ehv' },
+        { n: '2', dx: 16, dy: 84, dom: 'ehv' }, { n: '4', dx: 40, dy: 84, dom: 'ehv' }, { n: '6', dx: 64, dy: 84, dom: 'ehv' },
+        { n: 'TC1', dx: 88, dy: 28, dom: 'ctrl' }, { n: 'TC2', dx: 88, dy: 48, dom: 'ctrl' }
+      ],
+      bridges: inst => (inst.on && !inst.tripped) ? [['1', '2'], ['3', '4'], ['5', '6']] : [],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6']],
+      why: 'SF6 氣體滅弧的特高壓斷路器：161kV 系統的主開關，可啟斷負載與故障電流。跳脫線圈 TC1/TC2 接保護電驛出口。',
+      pinNote: '1/3/5 電源側、2/4/6 負載側；TC1/TC2 ← RY51 T1/T2',
+      alts: [['真空 VCB', '較低電壓等級'], ['GIS 整套', '含 DS/CT/PT 一體']]
+    },
+    gcb345: {
+      id: 'gcb345', name: 'GCB 氣體斷路器（345kV）', label: 'GCB-345', cls: 'CONTROL', w: 88, h: 84, row: 0,
+      color: '#4f1f2e', breaker: true,
+      terms: [
+        { n: '1', dx: 16, dy: 0, dom: 'uhv' }, { n: '3', dx: 40, dy: 0, dom: 'uhv' }, { n: '5', dx: 64, dy: 0, dom: 'uhv' },
+        { n: '2', dx: 16, dy: 84, dom: 'uhv' }, { n: '4', dx: 40, dy: 84, dom: 'uhv' }, { n: '6', dx: 64, dy: 84, dom: 'uhv' },
+        { n: 'TC1', dx: 88, dy: 28, dom: 'ctrl' }, { n: 'TC2', dx: 88, dy: 48, dom: 'ctrl' }
+      ],
+      bridges: inst => (inst.on && !inst.tripped) ? [['1', '2'], ['3', '4'], ['5', '6']] : [],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6']],
+      why: '345kV 超高壓斷路器：E/S 變電所的主開關。',
+      pinNote: '1/3/5 電源側、2/4/6 負載側；TC1/TC2 ← 保護電驛',
+      alts: [['一次半斷路器配置', '樞紐變電所（規劃中）']]
+    },
+    ct161: {
+      id: 'ct161', name: 'CT 比流器（161kV）', label: 'CT-161', cls: 'METER', w: 64, h: 84, row: 0,
+      color: '#2a3a48', ctsig: true,
+      param: { key: 'ratio', name: 'CT 一次額定', unit: 'A', min: 1, max: 2000, def: 600 },
+      terms: [
+        { n: '1', dx: 14, dy: 0, dom: 'ehv' }, { n: '3', dx: 32, dy: 0, dom: 'ehv' }, { n: '5', dx: 50, dy: 0, dom: 'ehv' },
+        { n: '2', dx: 14, dy: 84, dom: 'ehv' }, { n: '4', dx: 32, dy: 84, dom: 'ehv' }, { n: '6', dx: 50, dy: 84, dom: 'ehv' },
+        { n: 'k', dx: 64, dy: 28, dom: 'ctrl' }, { n: 'l', dx: 64, dy: 48, dom: 'ctrl' }
+      ],
+      bridges: () => [['1', '2'], ['3', '4'], ['5', '6']],
+      allPairs: [['1', '2'], ['3', '4'], ['5', '6']],
+      why: '161kV 比流器：k/l 接保護電驛。特高壓側電流很小（161kV 的 1A ≈ 380V 側 424A），整定值要按變比換算。',
+      pinNote: '主迴路串接；k/l → RY51 的 S1/S2',
+      alts: [['GIS 內建 CT', '氣體絕緣'], ['光學 CT', '數位變電所']]
+    },
+    mtx161: {
+      id: 'mtx161', name: '主變壓器（161kV→11.4kV）', label: 'MTX-161', cls: 'SOURCE', w: 110, h: 92, row: 0,
+      color: '#3e3652', hvtr2: true, xfmr: { from: 'ehv', to: 'hv', ratio: 14.12, disp: '161k/11.4k' },
+      param: { key: 'kva', name: '容量', unit: 'MVA', min: 5, max: 60, def: 25 },
+      terms: [
+        { n: '1', dx: 22, dy: 0, dom: 'ehv' }, { n: '3', dx: 55, dy: 0, dom: 'ehv' }, { n: '5', dx: 88, dy: 0, dom: 'ehv' },
+        { n: '2', dx: 22, dy: 92, dom: 'hv' }, { n: '4', dx: 55, dy: 92, dom: 'hv' }, { n: '6', dx: 88, dy: 92, dom: 'hv' }
+      ],
+      bridges: () => [], allPairs: [],
+      why: '特高壓用戶主變：161kV 降至 11.4kV 廠內配電。一次電流≈二次÷14.1。之後接 11.4kV 的 VCB／變壓器照舊。',
+      pinNote: '1/3/5 接 161kV（經 GCB）；2/4/6 出 11.4kV 廠內母線',
+      alts: [['雙主變分列', '重要負載'], ['有載調壓 OLTC', '電壓調整']]
+    },
+    mtx345: {
+      id: 'mtx345', name: '聯絡主變（345kV→161kV）', label: 'MTX-345', cls: 'SOURCE', w: 110, h: 92, row: 0,
+      color: '#52363e', hvtr2: true, xfmr: { from: 'uhv', to: 'ehv', ratio: 2.14, disp: '345k/161k' },
+      param: { key: 'kva', name: '容量', unit: 'MVA', min: 100, max: 1000, def: 500 },
+      terms: [
+        { n: '1', dx: 22, dy: 0, dom: 'uhv' }, { n: '3', dx: 55, dy: 0, dom: 'uhv' }, { n: '5', dx: 88, dy: 0, dom: 'uhv' },
+        { n: '2', dx: 22, dy: 92, dom: 'ehv' }, { n: '4', dx: 55, dy: 92, dom: 'ehv' }, { n: '6', dx: 88, dy: 92, dom: 'ehv' }
+      ],
+      bridges: () => [], allPairs: [],
+      why: 'E/S 超高壓變電所的聯絡主變：345kV 輸電降至 161kV 供區域變電所與特高壓用戶。一次電流≈二次÷2.14。',
+      pinNote: '1/3/5 接 345kV（經 GCB345）；2/4/6 出 161kV 母線',
+      alts: [['自耦變壓器', '345/161 常用型式'], ['三繞組', '含三次側電抗補償']]
+    },
     ry: {
       id: 'ry', name: 'RY 過電流電驛（51 反時限）', label: 'RY51', cls: 'CONTROL', w: 88, h: 66, row: 1,
       color: '#4e3040',
-      param: { key: 'pickup', name: '始動電流（一次）', unit: 'A', min: 0.2, max: 100, def: 0.5 },
+      param: { key: 'pickup', name: '始動電流（一次）', unit: 'A', min: 0.01, max: 100, def: 0.5 },
       terms: [
         { n: 'S1', dx: 20, dy: 0, dom: 'ctrl' }, { n: 'S2', dx: 44, dy: 0, dom: 'ctrl' },
         { n: 'T1', dx: 20, dy: 66, dom: 'ctrl' }, { n: 'T2', dx: 44, dy: 66, dom: 'ctrl' }
@@ -437,7 +554,8 @@ CF.Ind = (function () {
   };
   const PALETTE = ['nfb', 'mc', 'tr', 'mk', 'thry', 'pb_nc', 'pb_no', 'cos', 'pl_g', 'pl_r', 'bz', 'motor', 'motor6', 'plc',
     'fuse', 'co', 'vm', 'am', 'sc', 'tx', 'ats', 'gen',
-    'hvin', 'la', 'ds', 'lbs', 'vcb', 'pf', 'cthv', 'pt', 'hvtr', 'ry'];
+    'hvin', 'la', 'ds', 'lbs', 'vcb', 'pf', 'cthv', 'pt', 'hvtr', 'ry',
+    'ehvin161', 'ds161', 'gcb161', 'ct161', 'mtx161', 'ehvin345', 'ds345', 'gcb345', 'mtx345'];
 
   /* ================= 狀態 ================= */
   const LW = 1180, LH = 540;              // 邏輯畫布尺寸
@@ -548,18 +666,30 @@ CF.Ind = (function () {
       const uf = buildUF('state', coil);
       // 有電的電源組（相位網三元組）：市電、發電機、台電高壓、變壓器二次側（衍生）
       const sets = [];
-      if (!src.outage) sets.push({ name: '市電', nets: ['R', 'S', 'T'].map(t => uf.find(tid(src.uid, t))) });
-      for (const g of gens) if (g.running) sets.push({ name: labelOf(g.uid, '').trim(), nets: ['GR', 'GS', 'GT'].map(t => uf.find(tid(g.uid, t))) });
+      if (!src.outage) sets.push({ name: '市電', dom: 'main', nets: ['R', 'S', 'T'].map(t => uf.find(tid(src.uid, t))) });
+      for (const g of gens) if (g.running) sets.push({ name: labelOf(g.uid, '').trim(), dom: 'main', nets: ['GR', 'GS', 'GT'].map(t => uf.find(tid(g.uid, t))) });
       for (const p of st.parts) {
-        if (defOf(p).hvsrc && !p.outage) sets.push({ name: '台電11.4kV', hv: true, nets: ['H1', 'H2', 'H3'].map(t => uf.find(tid(p.uid, t))) });
+        const d0 = defOf(p);
+        if (d0.hvsrc && !p.outage) sets.push({ name: d0.setName, dom: d0.srcDom, nets: d0.srcTerms.map(t => uf.find(tid(p.uid, t))) });
       }
-      for (const p of st.parts) {
-        if (!defOf(p).hvtr) continue;
-        const pn = ['1', '3', '5'].map(t => uf.find(tid(p.uid, t)));
-        const feed = sets.find(s => s.hv && pn.every(n => s.nets.includes(n)) && new Set(pn).size === 3);
-        p._hvLive = !!feed;
-        if (feed) sets.push({ name: labelOf(p.uid, '').trim() + '二次', nets: ['2', '4', '6'].map(t => uf.find(tid(p.uid, t))) });
+      // 變壓器逐級衍生（345→161→11.4→380 串級，最多 4 輪至穩定）
+      const fedNow = new Set();
+      for (let xp = 0; xp < 4; xp++) {
+        let added = false;
+        for (const p of st.parts) {
+          const xf = defOf(p).xfmr;
+          if (!xf || fedNow.has(p.uid)) continue;
+          const pn = ['1', '3', '5'].map(t => uf.find(tid(p.uid, t)));
+          const feed = sets.find(s2 => s2.dom === xf.from && pn.every(n => s2.nets.includes(n)) && new Set(pn).size === 3);
+          if (feed) {
+            fedNow.add(p.uid);
+            sets.push({ name: labelOf(p.uid, '').trim() + '二次', dom: xf.to, nets: ['2', '4', '6'].map(t => uf.find(tid(p.uid, t))) });
+            added = true;
+          }
+        }
+        if (!added) break;
       }
+      for (const p of st.parts) if (defOf(p).xfmr) p._hvLive = fedNow.has(p.uid);
       // 有電的控制電源對
       const pairs = [];
       if (!src.outage) pairs.push([uf.find(tid(src.uid, 'C1')), uf.find(tid(src.uid, 'C2'))]);
@@ -647,23 +777,26 @@ CF.Ind = (function () {
       }
       return amps;
     };
-    // 高壓側電流：變壓器一次電流＝二次負載電流÷30（11.4kV/380V），加總到一次側節點
+    // 高壓側電流串級：由低壓往上逐級換算（一次電流＝二次側電流÷變比）
+    const XF_ORDER = { main: 0, hv: 1, ehv: 2, uhv: 3 };
     const hvNetAmps = {};
-    for (const p of st.parts) {
-      const d = defOf(p);
-      if (!d.hvtr || !p._hvLive) continue;
-      const secA = Math.max(...['2', '4', '6'].map(t => ampsAt(uf.find(tid(p.uid, t)))));
-      const priA = secA / 30;
+    const netA = n => (hvNetAmps[n] !== undefined ? hvNetAmps[n] : ampsAt(n));
+    const xfs = st.parts.filter(p => defOf(p).xfmr && p._hvLive)
+      .sort((a, b) => XF_ORDER[defOf(a).xfmr.to] - XF_ORDER[defOf(b).xfmr.to]);
+    for (const p of xfs) {
+      const xf = defOf(p).xfmr;
+      const secA = Math.max(...['2', '4', '6'].map(t => netA(uf.find(tid(p.uid, t)))));
+      const priA = secA / xf.ratio;
       for (const t of ['1', '3', '5']) {
         const n = uf.find(tid(p.uid, t));
         hvNetAmps[n] = (hvNetAmps[n] || 0) + priA;
       }
     }
-    // 高壓串接設備（DS/LBS/VCB/PF/CT）流過的電流
+    // 高壓串接設備（DS/LBS/VCB/GCB/PF/CT）流過的電流
     const hvAmps = {};
     for (const p of st.parts) {
       const d = defOf(p);
-      if (d.dsw || d.loadbreak || d.breaker || d.fusehv || d.id === 'cthv') {
+      if (d.dsw || d.loadbreak || d.breaker || d.fusehv || d.ctsig) {
         hvAmps[p.uid] = Math.max(hvNetAmps[uf.find(tid(p.uid, '1'))] || 0, hvNetAmps[uf.find(tid(p.uid, '2'))] || 0);
       }
     }
@@ -698,7 +831,7 @@ CF.Ind = (function () {
     const src = sourcePart();
 
     // 電壓域混接
-    const DOMN = { main: '低壓主迴路（380V）', ctrl: '控制迴路（110V）', hv: '高壓（11.4kV）' };
+    const DOMN = { main: '低壓主迴路（380V）', ctrl: '控制迴路（110V）', hv: '高壓（11.4kV）', ehv: '特高壓（161kV）', uhv: '超高壓（345kV）' };
     for (const w of st.wires) {
       const pa = termPos(byUid(w.a.uid), w.a.term), pb = termPos(byUid(w.b.uid), w.b.term);
       if (pa && pb && pa.dom !== pb.dom) {
@@ -730,8 +863,8 @@ CF.Ind = (function () {
       for (const g of st.parts) {
         const d2 = defOf(g);
         if (d2.gen) list.push({ name: labelOf(g.uid, '').trim(), nets: ['GR', 'GS', 'GT'].map(t => uf2.find(tid(g.uid, t))) });
-        if (d2.hvsrc) list.push({ name: '台電11.4kV', nets: ['H1', 'H2', 'H3'].map(t => uf2.find(tid(g.uid, t))) });
-        if (d2.hvtr) list.push({ name: labelOf(g.uid, '').trim() + '二次', nets: ['2', '4', '6'].map(t => uf2.find(tid(g.uid, t))) });
+        if (d2.hvsrc) list.push({ name: d2.setName, nets: d2.srcTerms.map(t => uf2.find(tid(g.uid, t))) });
+        if (d2.xfmr) list.push({ name: labelOf(g.uid, '').trim() + '二次', xfUid: g.uid, nets: ['2', '4', '6'].map(t => uf2.find(tid(g.uid, t))) });
       }
       return list;
     };
@@ -817,45 +950,61 @@ CF.Ind = (function () {
       else warn(p.id === 'pt' ? 'PT 未跨相' : '控制變壓器未跨相', `${labelOf(p.uid, '').trim()} 的 P1/P2 沒有分別接到兩個不同相——二次側不會有電。`);
     }
 
-    // 高壓受電：路徑、保護、電驛迴路、操作順序
-    const hvinP = st.parts.find(p => defOf(p).hvsrc);
-    const hvtrs = st.parts.filter(p => defOf(p).hvtr);
-    if (hvinP && hvtrs.length) {
-      const hvNets = uf2 => ['H1', 'H2', 'H3'].map(t => uf2.find(tid(hvinP.uid, t)));
-      const priReach = uf2 => {
-        const hn = hvNets(uf2);
-        return hvtrs.every(tr2 => {
-          const pn = ['1', '3', '5'].map(t => uf2.find(tid(tr2.uid, t)));
-          return pn.every(n => hn.includes(n)) && new Set(pn).size === 3;
-        });
-      };
-      if (priReach(ufAll)) pass('高壓路徑', '變壓器一次側可經高壓開關受電（全閉假設）。');
-      else warn('變壓器一次側未受電', '11.4kV 進線經 DS／VCB（或 LBS＋PF）到變壓器 1/3/5 的路徑不通。');
-      // 遮斷設備：VCB 或 PF 必須串在高壓路徑上
-      const hasVcb = st.parts.some(q => q.id === 'vcb'), hasPf = st.parts.some(q => q.id === 'pf');
-      if (!hasVcb && !hasPf) warn('缺高壓遮斷設備', '高壓側沒有 VCB 或 PF——故障時無法遮斷。DS 沒有滅弧能力，不算。');
-      else {
-        const serialHv = skipId => !priReach(buildUF('all-skip:' + skipId));
-        if (hasVcb) (serialHv('vcb') ? pass('高壓遮斷', 'VCB 已正確串接於高壓受電路徑。') : warn('VCB 未串接', 'VCB 沒有串在高壓路徑上，跳脫也切不斷電源。'));
-        if (hasPf) (serialHv('pf') ? pass('熔絲保護', 'PF 電力熔絲已正確串接於高壓路徑。') : warn('PF 未串接', 'PF 沒有串在高壓路徑上。'));
+    // 高壓／特高壓受電：各級路徑、遮斷設備、電驛迴路、操作順序
+    const xfParts = st.parts.filter(p => defOf(p).xfmr);
+    const xfFedIn = (uf2, p) => {
+      const pn = ['1', '3', '5'].map(t => uf2.find(tid(p.uid, t)));
+      return new Set(pn).size === 3 && trioSources(uf2).some(tr => tr.xfUid !== p.uid && pn.every(n => tr.nets.includes(n)));
+    };
+    for (const p of xfParts) {
+      if (xfFedIn(ufAll, p)) pass(`${labelOf(p.uid, '').trim()} 受電路徑`, '變壓器一次側可經開關設備受電（全閉假設）。');
+      else warn(`${labelOf(p.uid, '').trim()} 一次側未受電`, '上一級電源經 DS／斷路器到變壓器 1/3/5 的路徑不通。');
+    }
+    // 各級電源需存在：某級變壓器的 from 域必須有進線或上一級主變供電
+    const domSrcOk = dom => st.parts.some(q => defOf(q).srcDom === dom) || xfParts.some(q => defOf(q).xfmr.to === dom);
+    const DOM_LVL = { hv: '11.4kV', ehv: '161kV', uhv: '345kV' };
+    for (const dom of ['hv', 'ehv', 'uhv']) {
+      if (xfParts.some(q => defOf(q).xfmr.from === dom) && !domSrcOk(dom)) {
+        warn(`缺${DOM_LVL[dom]}電源`, `有 ${DOM_LVL[dom]} 一次側的變壓器，但該電壓等級沒有進線也沒有上一級主變。`);
       }
-      // RY51 迴路：S 側接 CT、T 側接 VCB 跳脫線圈
+    }
+    // 各級遮斷設備與串接
+    const LVL_CFG = [
+      { srcId: 'hvin', brks: ['vcb', 'pf'], fromDom: 'hv', lvl: '11.4kV' },
+      { srcId: 'ehvin161', brks: ['gcb161'], fromDom: 'ehv', lvl: '161kV' },
+      { srcId: 'ehvin345', brks: ['gcb345'], fromDom: 'uhv', lvl: '345kV' }
+    ];
+    for (const cfg of LVL_CFG) {
+      if (!st.parts.some(q => q.id === cfg.srcId)) continue;
+      const present = cfg.brks.filter(b => st.parts.some(q => q.id === b));
+      if (!present.length) { warn(`缺${cfg.lvl}遮斷設備`, `${cfg.lvl} 側沒有 ${cfg.brks.join('／').toUpperCase()}——故障時無法遮斷（DS 無滅弧能力，不算）。`); continue; }
+      const lvlXf = xfParts.filter(q => defOf(q).xfmr.from === cfg.fromDom);
+      for (const b of present) {
+        if (!lvlXf.length) break;
+        const ufSkip = buildUF('all-skip:' + b);
+        const still = lvlXf.some(q => xfFedIn(ufSkip, q));
+        if (!still) pass(`${cfg.lvl} 遮斷`, `${b.toUpperCase()} 已正確串接於 ${cfg.lvl} 受電路徑。`);
+        else warn(`${b.toUpperCase()} 未串接`, `${b.toUpperCase()} 沒有串在 ${cfg.lvl} 主迴路上，跳脫也切不斷電源。`);
+      }
+    }
+    // RY51 迴路：S 側接 CT、T 側接斷路器跳脫線圈（VCB/GCB 通用）
+    if (st.parts.some(q => q.id === 'ry')) {
       const ufW2 = buildUF('wires');
       for (const p of st.parts.filter(q => q.id === 'ry')) {
         const sN = [ufW2.find(tid(p.uid, 'S1')), ufW2.find(tid(p.uid, 'S2'))];
         const tN = [ufW2.find(tid(p.uid, 'T1')), ufW2.find(tid(p.uid, 'T2'))];
-        const hasCt = st.parts.some(q => q.id === 'cthv' && [ufW2.find(tid(q.uid, 'k')), ufW2.find(tid(q.uid, 'l'))].some(n => sN.includes(n)));
-        const hasTrip = st.parts.some(q => q.id === 'vcb' && [ufW2.find(tid(q.uid, 'TC1')), ufW2.find(tid(q.uid, 'TC2'))].some(n => tN.includes(n)));
-        if (hasCt && hasTrip) pass('過電流保護迴路', `${labelOf(p.uid, '').trim()}：CT → 電驛 → VCB 跳脫迴路接妥（反時限 51）。`);
+        const hasCt = st.parts.some(q => defOf(q).ctsig && [ufW2.find(tid(q.uid, 'k')), ufW2.find(tid(q.uid, 'l'))].some(n => sN.includes(n)));
+        const hasTrip = st.parts.some(q => defOf(q).breaker && [ufW2.find(tid(q.uid, 'TC1')), ufW2.find(tid(q.uid, 'TC2'))].some(n => tN.includes(n)));
+        if (hasCt && hasTrip) pass('過電流保護迴路', `${labelOf(p.uid, '').trim()}：CT → 電驛 → 斷路器跳脫迴路接妥（反時限 51）。`);
         else {
           if (!hasCt) warn('RY 未接 CT', `${labelOf(p.uid, '').trim()} 的 S1/S2 沒接到任何 CT 的 k/l——電驛量不到電流。`);
-          if (!hasTrip) warn('RY 未接跳脫迴路', `${labelOf(p.uid, '').trim()} 的 T1/T2 沒接到 VCB 的 TC1/TC2——動作了也跳不了脫。`);
+          if (!hasTrip) warn('RY 未接跳脫迴路', `${labelOf(p.uid, '').trim()} 的 T1/T2 沒接到 VCB/GCB 的 TC1/TC2——動作了也跳不了脫。`);
         }
       }
-      if (st.parts.some(q => q.id === 'ds') && hasVcb) {
-        info('停送電順序', '送電：先合 DS、再合 VCB。停電：先開 VCB、再開 DS。帶載操作 DS 會發生弧光事故（模擬會如實呈現）。');
-      }
-    } else if (hvtrs.length && !hvinP) warn('缺高壓進線', '有變壓器但沒有 HV-IN 台電高壓進線——一次側沒有電源。');
+    }
+    if (st.parts.some(q => defOf(q).dsw) && st.parts.some(q => defOf(q).breaker)) {
+      info('停送電順序', '送電：先合 DS、再合斷路器（VCB/GCB）。停電：先開斷路器、再開 DS。帶載操作 DS 會發生弧光事故（模擬會如實呈現）。');
+    }
 
     // ATS／發電機：常用與備用路徑、雙電源併聯
     const atsList = st.parts.filter(p => defOf(p).ats);
@@ -1076,7 +1225,7 @@ CF.Ind = (function () {
     for (const p of st.parts) {
       if (p.id !== 'ry') continue;
       const sNet = r.uf.find(tid(p.uid, 'S1')), sNet2 = r.uf.find(tid(p.uid, 'S2'));
-      const ct = st.parts.find(q => q.id === 'cthv' &&
+      const ct = st.parts.find(q => defOf(q).ctsig &&
         [r.uf.find(tid(q.uid, 'k')), r.uf.find(tid(q.uid, 'l'))].some(n => n === sNet || n === sNet2));
       if (!ct) continue;
       const amps = (r.hvAmps && r.hvAmps[ct.uid]) || 0;
@@ -1089,7 +1238,7 @@ CF.Ind = (function () {
         if (p.ryAcc >= tTrip) {
           p.ryAcc = 0;
           const tNet = r.uf.find(tid(p.uid, 'T1')), tNet2 = r.uf.find(tid(p.uid, 'T2'));
-          const vcbT = st.parts.find(q => q.id === 'vcb' &&
+          const vcbT = st.parts.find(q => defOf(q).breaker &&
             [r.uf.find(tid(q.uid, 'TC1')), r.uf.find(tid(q.uid, 'TC2'))].some(n => n === tNet || n === tNet2));
           if (vcbT) {
             vcbT.tripped = true;
@@ -1201,6 +1350,8 @@ CF.Ind = (function () {
 
   function wireColor(w, pa) {
     if (pa.dom === 'hv') return '#8a3b9f';
+    if (pa.dom === 'ehv') return '#2e6bd0';
+    if (pa.dom === 'uhv') return '#c02a50';
     if (pa.dom === 'ctrl') {
       if (st.running && st.live && st.live.pairs) {
         const n = st.live.uf.find(tid(w.a.uid, w.a.term));
@@ -1440,11 +1591,11 @@ CF.Ind = (function () {
       ctx.fillText(p.running ? 'RUN ⚙' : (p.startAt ? '起動中⋯' : 'AMF 待機'), p.x + d.w / 2 + 22, cy + 4);
       ctx.textAlign = 'left';
     }
-    if (d.hvsrc) {  // 高壓進線
+    if (d.hvsrc) {  // 高壓／特高壓進線
       ctx.font = '700 11px monospace';
       ctx.textAlign = 'center';
-      ctx.fillStyle = p.outage ? '#ff5348' : '#d9a0f0';
-      ctx.fillText(p.outage ? '✕ 停電中' : '⚡ 11.4kV', p.x + d.w / 2, p.y + 50);
+      ctx.fillStyle = p.outage ? '#ff5348' : (d.srcDom === 'uhv' ? '#f0a0b8' : d.srcDom === 'ehv' ? '#7db0e8' : '#d9a0f0');
+      ctx.fillText(p.outage ? '✕ 停電中' : '⚡ ' + d.setName.replace('台電', ''), p.x + d.w / 2, p.y + 50);
       ctx.textAlign = 'left';
     }
     if (d.id === 'la') {  // 避雷器：洩流箭頭＋接地
@@ -1495,7 +1646,7 @@ CF.Ind = (function () {
         ctx.beginPath(); ctx.arc(x, p.y + d.h / 2 + 2, 7, 0, Math.PI * 2); ctx.stroke();
       }
     }
-    if (d.hvtr) {  // 變壓器
+    if (d.xfmr) {  // 變壓器（各級）
       const cx = p.x + d.w / 2, cy = p.y + d.h / 2 + 2;
       ctx.strokeStyle = p._hvLive && st.running ? '#3ddc84' : '#8a7a5a';
       ctx.lineWidth = 2.5;
@@ -1504,7 +1655,7 @@ CF.Ind = (function () {
       ctx.font = '9px monospace';
       ctx.fillStyle = 'rgba(242,244,246,.7)';
       ctx.textAlign = 'center';
-      ctx.fillText(`${p.kva !== undefined ? p.kva : 500}kVA 11.4k/380`, cx, p.y + d.h - 22);
+      ctx.fillText(`${p.kva !== undefined ? p.kva : d.param.def}${d.param.unit} ${d.xfmr.disp}`, cx, p.y + d.h - 22);
       ctx.textAlign = 'left';
     }
     if (d.id === 'ry') {  // 保護電驛
@@ -1528,7 +1679,7 @@ CF.Ind = (function () {
     for (const t of d.terms) {
       const x = p.x + t.dx, y = p.y + t.dy;
       ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : '#ffd9a0';
+      ctx.fillStyle = t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : t.dom === 'ehv' ? '#7db0e8' : t.dom === 'uhv' ? '#f0a0b8' : '#ffd9a0';
       ctx.fill();
       ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = '#3b4046';
@@ -1543,7 +1694,7 @@ CF.Ind = (function () {
         const x = p.x + t.dx, y = p.y + t.dy;
         ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2);
         ctx.strokeStyle = '#0e7a6e'; ctx.lineWidth = 2; ctx.stroke();
-        const txt = `${labelOf(p.uid, t.n)}（${t.dom === 'main' ? '主迴路' : t.dom === 'hv' ? '高壓11.4kV' : '控制'}）`;
+        const txt = `${labelOf(p.uid, t.n)}（${t.dom === 'main' ? '主迴路' : t.dom === 'hv' ? '高壓11.4kV' : t.dom === 'ehv' ? '161kV' : t.dom === 'uhv' ? '345kV' : '控制'}）`;
         ctx.font = '11px "IBM Plex Mono","Noto Sans TC",monospace';
         const tw = ctx.measureText(txt).width + 12;
         ctx.fillStyle = 'rgba(25,23,19,.92)';
@@ -1705,7 +1856,7 @@ CF.Ind = (function () {
     if (p.fault) return { ok: false, error: `${lbl} 已弧光損壞，無法操作——請重新載入範例（實務上要整組更換）` };
     if (d.breaker && p.tripped) return { ok: false, error: `${lbl} 處於跳脫狀態，請先「復歸」再投入` };
     const amps = (st.running && st.live && st.live.hvAmps && st.live.hvAmps[p.uid]) || 0;
-    if (p.on && amps > 0.05) {
+    if (p.on && amps > 0.004) {
       if (d.dsw) {
         p.fault = true;
         p.on = false;
@@ -1806,6 +1957,11 @@ CF.Ind = (function () {
     { id: 'hv_2tr', tier: 'hv', name: '雙變壓器分列運轉', desc: '一路高壓進線、兩台變壓器各帶一段低壓母線——重要負載分段供電。' },
     { id: 'hv_atsgen', tier: 'hv', name: '高壓停電＋ATS/GEN 聯動', desc: '台電高壓停電→發電機 AMF 自起→低壓 ATS 切備用；復電自動切回——全鏈路演練。' },
     { id: 'hv_full', tier: 'hv', name: '受電盤總和演練', desc: '全套：DS/VCB/CT/RY51/變壓器/NFB/MC 自保持/VM——從 11.4kV 到馬達啟停一氣呵成。' },
+    { id: 'ehv_161', tier: 'hv', name: '161kV 特高壓受電（串級）', desc: '科技廠等級：161kV→DS→GCB→CT→主變 11.4kV→VCB→配電變壓器→380V 馬達——三級電壓一氣串起。' },
+    { id: 'ehv_345', tier: 'hv', name: '345kV E/S 超高壓變電所', desc: '345kV 輸電→GCB345→聯絡主變 161kV→GCB161→主變 11.4kV→配電變壓器→馬達：四級電壓完整串級。' },
+    { id: 'ehv_seq', tier: 'hv', name: '161kV 停送電順序演練', desc: '全開狀態起步：由電源側往負載側 DS-161→GCB-161→VCB 逐級投入；停電反向操作。' },
+    { id: 'ehv_arc', tier: 'hv', name: '事故重現：161kV 帶載拉 DS', desc: '特高壓帶載開斷的弧光比 11.4kV 更劇烈——負面教材，運轉中拉 DS-161 看後果。' },
+    { id: 'ehv_relay', tier: 'hv', name: '161kV CT＋RY51 保護', desc: '特高壓側電流極小（÷424）：CT-161 讀值、始動 0.03A 一次、反時限跳 GCB——整定換算的教學。' },
     // ── PLC 可程式控制 ──
     { id: 'plc_selfhold', tier: 'plc', name: 'PLC 自保持（梯形圖）', desc: '按鈕接 PLC 輸入、Y0 驅動 MC：自保持邏輯寫在梯形圖裡，雙擊 PLC 開編輯器。' },
     { id: 'plc_jog', tier: 'plc', name: 'PLC 寸動', desc: '最小程式：X0 常開直通 Y0——按著才轉。跟硬體寸動對照。' },
@@ -2070,6 +2226,44 @@ CF.Ind = (function () {
       W(M, '13', GO, '3'); W(M, '14', GO, '4');
       W(M, 'A2', H, '95'); W(H, '96', TX, 'S2');
       W(GL, 'X1', M, 'A1'); W(GL, 'X2', M, 'A2');
+    } else if (pid.startsWith('ehv_')) {
+      // 161kV 串級：161→(DS161→GCB161→CT161)→MTX161→11.4kV→(VCB)→HVTR→380V→NFB→馬達
+      const chain161 = closed => {
+        const E = A('ehvin161'), D = A('ds161'), G = A('gcb161'), C = A('ct161'), MX = A('mtx161');
+        const V = addPartSilent('vcb', 1), T = addPartSilent('hvtr', 1), N = addPartSilent('nfb', 1);
+        const MO = A('motor'), R = A('ry');
+        W(E, 'E1', D, '1'); W(E, 'E2', D, '3'); W(E, 'E3', D, '5');
+        W(D, '2', G, '1'); W(D, '4', G, '3'); W(D, '6', G, '5');
+        W(G, '2', C, '1'); W(G, '4', C, '3'); W(G, '6', C, '5');
+        W(C, '2', MX, '1'); W(C, '4', MX, '3'); W(C, '6', MX, '5');
+        W(MX, '2', V, '1'); W(MX, '4', V, '3'); W(MX, '6', V, '5');
+        W(V, '2', T, '1'); W(V, '4', T, '3'); W(V, '6', T, '5');
+        W(T, '2', N, '1'); W(T, '4', N, '3'); W(T, '6', N, '5');
+        W(N, '2', MO, 'U'); W(N, '4', MO, 'V'); W(N, '6', MO, 'W');
+        W(C, 'k', R, 'S1'); W(C, 'l', R, 'S2');
+        W(R, 'T1', G, 'TC1'); W(R, 'T2', G, 'TC2');
+        byUid(R).pickup = 0.03;
+        if (closed) { byUid(D).on = true; byUid(G).on = true; byUid(V).on = true; }
+        return { D, G, C, MX, V, T, N, MO, R };
+      };
+      if (pid === 'ehv_161' || pid === 'ehv_seq' || pid === 'ehv_arc' || pid === 'ehv_relay') {
+        const c = chain161(pid !== 'ehv_seq');
+        if (pid === 'ehv_relay') byUid(c.MO).loadA = 20;
+      } else if (pid === 'ehv_345') {
+        const U = A('ehvin345'), D3 = A('ds345'), G3 = A('gcb345'), M3 = A('mtx345');
+        const G1 = addPartSilent('gcb161', 1), M1 = addPartSilent('mtx161', 1), V = addPartSilent('vcb', 1), T = addPartSilent('hvtr', 1), N = addPartSilent('nfb', 1);
+        const MO = A('motor');
+        W(U, 'U1', D3, '1'); W(U, 'U2', D3, '3'); W(U, 'U3', D3, '5');
+        W(D3, '2', G3, '1'); W(D3, '4', G3, '3'); W(D3, '6', G3, '5');
+        W(G3, '2', M3, '1'); W(G3, '4', M3, '3'); W(G3, '6', M3, '5');
+        W(M3, '2', G1, '1'); W(M3, '4', G1, '3'); W(M3, '6', G1, '5');
+        W(G1, '2', M1, '1'); W(G1, '4', M1, '3'); W(G1, '6', M1, '5');
+        W(M1, '2', V, '1'); W(M1, '4', V, '3'); W(M1, '6', V, '5');
+        W(V, '2', T, '1'); W(V, '4', T, '3'); W(V, '6', T, '5');
+        W(T, '2', N, '1'); W(T, '4', N, '3'); W(T, '6', N, '5');
+        W(N, '2', MO, 'U'); W(N, '4', MO, 'V'); W(N, '6', MO, 'W');
+        for (const u of [D3, G3, G1, V]) byUid(u).on = true;
+      }
     } else if (pid.startsWith('hv_')) {
       const HV = A('hvin');
       // 共用：高壓鏈 → 變壓器 → NFB → 馬達
@@ -2279,14 +2473,16 @@ CF.Ind = (function () {
   }
   function loadExample() { return loadPreset('selfhold'); }
 
-  function addPartSilent(id) {
+  function addPartSilent(id, rowOverride) {
     const d = DEFS[id];
+    const row = rowOverride !== undefined ? rowOverride : d.row;
     let x = 30;
     for (const p of st.parts) {
       const pd = defOf(p);
-      if (pd.row === d.row) x = Math.max(x, p.x + pd.w + 42);
+      const pRow = p._row !== undefined ? p._row : pd.row;
+      if (pRow === row) x = Math.max(x, p.x + pd.w + 42);
     }
-    const np = { uid: st.uidSeq++, id, x, y: ROW_Y[d.row] - (d.row === 0 ? 0 : d.h - 46) };
+    const np = { uid: st.uidSeq++, id, x, y: ROW_Y[row] - (row === 0 ? 0 : d.h - 46), _row: row };
     if (d.toggle) np.on = true;
     st.parts.push(np);
     return np.uid;
@@ -2351,7 +2547,7 @@ CF.Ind = (function () {
       const mx = (pa.x + pb.x) / 2;
       const sag = Math.min(60, Math.abs(pa.x - pb.x) * 0.15 + Math.abs(pa.y - pb.y) * 0.1 + 18);
       const my = Math.max(pa.y, pb.y) + sag;
-      let color = pa.dom === 'hv' ? '#8a3b9f' : '#c98418';
+      let color = pa.dom === 'hv' ? '#8a3b9f' : pa.dom === 'ehv' ? '#2e6bd0' : pa.dom === 'uhv' ? '#c02a50' : '#c98418';
       if (pa.dom === 'main') {
         color = '#7a4040';
         if (restUf && src) {
@@ -2369,7 +2565,7 @@ CF.Ind = (function () {
       el.push(`<text x="${p.x + d.w / 2}" y="${p.y + 22}" text-anchor="middle" fill="#f2f4f6" font-size="14" font-weight="700">${escT(labelOf(p.uid, '').trim())}</text>`);
       for (const t of d.terms) {
         const x = p.x + t.dx, y = p.y + t.dy;
-        el.push(`<circle cx="${x}" cy="${y}" r="5" fill="${t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : '#ffd9a0'}" stroke="rgba(0,0,0,.4)"/>`);
+        el.push(`<circle cx="${x}" cy="${y}" r="5" fill="${t.dom === 'main' ? '#d8dce0' : t.dom === 'hv' ? '#d9a0f0' : t.dom === 'ehv' ? '#7db0e8' : t.dom === 'uhv' ? '#f0a0b8' : '#ffd9a0'}" stroke="rgba(0,0,0,.4)"/>`);
         el.push(`<text x="${x}" y="${t.dy === 0 ? y - 8 : t.dy >= d.h ? y + 16 : y - 8}" text-anchor="middle" fill="#3b4046" font-size="9">${escT(t.n)}</text>`);
       }
     }
@@ -2382,7 +2578,7 @@ CF.Ind = (function () {
     const wiring = ['# 接線表（配電盤）', ''];
     st.wires.forEach((w, i) => {
       const pa = termPos(byUid(w.a.uid), w.a.term);
-      wiring.push(`${String(i + 1).padStart(2, '0')}  ${labelOf(w.a.uid, w.a.term)}  →  ${labelOf(w.b.uid, w.b.term)}   [${pa && pa.dom === 'main' ? '主' : pa && pa.dom === 'hv' ? '高壓' : '控'}]`);
+      wiring.push(`${String(i + 1).padStart(2, '0')}  ${labelOf(w.a.uid, w.a.term)}  →  ${labelOf(w.b.uid, w.b.term)}   [${pa && pa.dom === 'main' ? '主' : pa && pa.dom === 'hv' ? '高壓' : pa && pa.dom === 'ehv' ? '161kV' : pa && pa.dom === 'uhv' ? '345kV' : '控'}]`);
     });
     const bom = ['# 元件表（BOM）', ''];
     const cnt = {};
