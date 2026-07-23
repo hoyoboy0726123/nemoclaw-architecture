@@ -13,9 +13,33 @@
   const st = {
     open: false, busy: false,
     history: [],          // Gemini contents 格式
+    display: [],          // 畫面訊息 {who:'user'|'agent'|'tool', text}（IndexedDB 還原用）
     sdkPromise: null,
     els: {}
   };
+
+  /* ---- 對話持久化 ---- */
+  function trimHistory(list, max) {
+    let out = list.slice(-max);
+    // 避免開頭落在 functionCall/functionResponse 中間（API 會拒絕）
+    while (out.length && !(out[0].role === 'user' && out[0].parts && out[0].parts[0] && out[0].parts[0].text)) out.shift();
+    return out;
+  }
+  function saveChat() {
+    if (!window.CF || !CF.Store) return;
+    CF.Store.set('chat', { history: trimHistory(st.history, 40), display: st.display.slice(-60) });
+  }
+  async function restoreChat() {
+    if (!window.CF || !CF.Store) return;
+    const saved = await CF.Store.get('chat');
+    if (!saved || !saved.display || !saved.display.length) return;
+    st.history = saved.history || [];
+    st.display = saved.display;
+    for (const e of st.display) {
+      if (e.who === 'tool') renderChipDom(e.text);
+      else renderMsgDom(e.who, e.text);
+    }
+  }
 
   const getKey = () => localStorage.getItem(LS_KEY) || '';
   const getModel = () => localStorage.getItem(LS_MODEL) || DEFAULT_MODELS[0];
@@ -218,6 +242,7 @@
     } finally {
       st.busy = false;
       setBusyUi(false);
+      saveChat();
     }
   }
 
@@ -264,16 +289,25 @@
   }
   const escT = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  function addMsg(who, text) {
+  function renderMsgDom(who, text) {
     const el = h('div', 'ag-msg ag-' + who);
     el.innerHTML = escT(text).replace(/\n/g, '<br>');
     st.els.msgs.appendChild(el);
     st.els.msgs.scrollTop = st.els.msgs.scrollHeight;
   }
-  function addToolChip(name) {
+  function renderChipDom(name) {
     const el = h('div', 'ag-tool', `⚙ ${escT(name)}`);
     st.els.msgs.appendChild(el);
     st.els.msgs.scrollTop = st.els.msgs.scrollHeight;
+  }
+  function addMsg(who, text) {
+    renderMsgDom(who, text);
+    st.display.push({ who, text });
+    if (st.display.length > 80) st.display.shift();
+  }
+  function addToolChip(name) {
+    renderChipDom(name);
+    st.display.push({ who: 'tool', text: name });
   }
   function note(text) { addMsg('agent', text); }
 
@@ -315,6 +349,7 @@
         <div class="ag-row">
           <select data-model></select>
           <button type="button" data-refresh title="從 API 載入可用模型">↻ 清單</button>
+          <button type="button" data-clearchat title="清除對話紀錄">🗑 對話</button>
         </div>
         <p class="ag-hint">預設 gemma-4-31b-it（Gemini API 免費層、支援 function calling）。金鑰可於 aistudio.google.com 免費取得。</p>
       </div>
@@ -365,6 +400,13 @@
       note('金鑰已清除。');
     });
     panel.querySelector('[data-refresh]').addEventListener('click', refreshModels);
+    panel.querySelector('[data-clearchat]').addEventListener('click', () => {
+      st.history = [];
+      st.display = [];
+      st.els.msgs.innerHTML = '';
+      if (window.CF && CF.Store) CF.Store.del('chat');
+      note('對話紀錄已清除。');
+    });
     st.els.modelSel.addEventListener('change', () => {
       localStorage.setItem(LS_MODEL, st.els.modelSel.value);
       st.els.modelTag.textContent = st.els.modelSel.value;
@@ -380,6 +422,8 @@
     st.els.input.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
     });
+
+    restoreChat();   // 還原上次的對話紀錄（IndexedDB）
   }
 
   document.addEventListener('DOMContentLoaded', buildUi);

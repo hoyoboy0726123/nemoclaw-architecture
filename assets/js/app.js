@@ -9,8 +9,23 @@
     files: [], activeFile: 0, activeTab: 'code',
     pinLabels: true, panMode: false,
     editorInited: false,
-    simRefs: null
+    simRefs: null,
+    pinOverrides: {},         // `${partId}|${pinName}` → gpio（跨重整保留腳位修改）
+    lastGenText: null,
+    savedEditor: null,        // 開機時從 IndexedDB 載入的編輯器快照
+    booted: false
   };
+
+  /* ---------------- 持久化（IndexedDB） ---------------- */
+  let persistTimer = null;
+  function persist() {
+    if (!state.booted || !window.CF.Store) return;
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
+      if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
+    }, 400);
+  }
 
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const currentPlan = () => state.mode === 'edit' ? CF.Editor.getPlan() : state.plan;
@@ -150,10 +165,21 @@
 
   /* ---------------- 產生（自動模式） ---------------- */
   function generate() {
+    if (state.lastGenText !== null && state.lastGenText !== state.reqText) state.pinOverrides = {};
+    state.lastGenText = state.reqText;
     const spec = CF.parseRequirement(state.reqText);
     state.plan = CF.buildPlan(spec);
+    applyPinOverrides();
     if (state.mode === 'view') CF.Board3D.setPlan(state.plan);
     refreshAll();
+  }
+
+  function applyPinOverrides() {
+    for (const [key, gpio] of Object.entries(state.pinOverrides)) {
+      const [partId, pinName] = key.split('|');
+      const net = state.plan.nets.find(n => !n.locked && n.partRef === partId && n.pinName === pinName);
+      if (net && CF.pinOptions(state.plan, net).includes(gpio)) CF.reassignPin(state.plan, net.id, gpio);
+    }
   }
 
   function refreshAll() {
@@ -168,6 +194,7 @@
     renderDocs(plan);
     CF.Sim.load(plan);
     renderSimPanel(plan);
+    persist();
   }
 
   /* ---------------- 模式切換 ---------------- */
@@ -185,7 +212,12 @@
       if (!state.editorInited) {
         CF.Editor.init($('#editor2d'), { onChange: () => refreshAll() });
         state.editorInited = true;
-        CF.Editor.importPlan(state.plan);
+        if (state.savedEditor) {
+          CF.Editor.restore(state.savedEditor);   // 還原上次重整前的接線
+          state.savedEditor = null;
+        } else {
+          CF.Editor.importPlan(state.plan);
+        }
         $('#editBoardSel').value = CF.Editor.getState().boardId;
         $('#editConnSel').value = CF.Editor.getState().conn;
       } else {
@@ -259,6 +291,8 @@
     });
     host.querySelectorAll('select[data-net]').forEach(sel => {
       sel.addEventListener('change', () => {
+        const netObj = state.plan.nets.find(n => n.id === Number(sel.dataset.net));
+        if (netObj) state.pinOverrides[`${netObj.partRef}|${netObj.pinName}`] = sel.value;
         CF.reassignPin(state.plan, Number(sel.dataset.net), sel.value);
         state.files = CF.genFiles(state.plan);
         CF.Board3D.setPlan(state.plan);
@@ -268,6 +302,7 @@
         renderDocs(state.plan);
         CF.Sim.load(state.plan);
         renderSimPanel(state.plan);
+        persist();
       });
     });
   }
@@ -743,10 +778,12 @@
       if (!net) return { ok: false, error: `找不到 ${partId} 的可調訊號腳` };
       const opts = CF.pinOptions(state.plan, net);
       if (!opts.includes(gpio)) return { ok: false, error: `${gpio} 不可用，可選：${opts.join('、')}` };
+      state.pinOverrides[`${net.partRef}|${net.pinName}`] = gpio;
       CF.reassignPin(state.plan, net.id, gpio);
       state.files = CF.genFiles(state.plan);
       CF.Board3D.setPlan(state.plan);
       renderTabsAll();
+      persist();
       return { ok: true, changed: `${net.from} → ${gpio}` };
     },
     editorAddPart(partId) {
@@ -799,11 +836,25 @@
     renderSimPanel(state.plan);
   }
 
-  /* ---------------- 啟動 ---------------- */
-  document.addEventListener('DOMContentLoaded', () => {
+  /* ---------------- 啟動（含 IndexedDB 還原） ---------------- */
+  document.addEventListener('DOMContentLoaded', async () => {
     buildLeftPanel();
     CF.Board3D.init($('#board3d'));
     bind();
-    generate();
+    try {
+      const saved = await CF.Store.get('app');
+      state.savedEditor = await CF.Store.get('editor');
+      if (saved && saved.reqText) {
+        state.reqText = saved.reqText;
+        state.pinOverrides = saved.pinOverrides || {};
+        state.lastGenText = saved.reqText;   // 沿用需求文字，保留腳位覆寫
+      }
+      generate();
+      if (saved && saved.mode === 'edit' && state.savedEditor) setMode('edit');
+    } catch (e) {
+      generate();
+    }
+    state.booted = true;
+    persist();
   });
 })();

@@ -806,8 +806,29 @@ CF.Editor = (function () {
     return { ok: false, error: `工作台上沒有 ${partId}` };
   }
 
+  /* ---------------- 序列化（IndexedDB 持久化用） ---------------- */
+  function serialize() {
+    return {
+      boardId: st.boardId,
+      conn: st.conn,
+      parts: st.parts.map(p => ({ id: p.id, c0: p.c0, side: p.side, value: p.value })),
+      wires: st.wires.map(w => ({ a: { c: w.a.c, r: w.a.r }, b: { c: w.b.c, r: w.b.r } }))
+    };
+  }
+  function restore(d) {
+    if (!d) return;
+    st.boardId = d.boardId || 'esp32';
+    st.conn = d.conn || 'mqtt';
+    st.parts = (d.parts || []).filter(p => CF.PARTS[p.id]).map(p => ({ uid: st.uidSeq++, id: p.id, c0: p.c0, side: p.side, value: p.value }));
+    st.wires = (d.wires || []).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
+    st.sel = null; st.wireStart = null; st.placing = null;
+    changed();
+  }
+
   /* ---------------- 對外 ---------------- */
   return {
+    serialize,
+    restore,
     agentAddPart,
     agentRemovePart,
     init(canvas, opts) {
