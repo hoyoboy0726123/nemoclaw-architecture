@@ -389,6 +389,19 @@ select, input, textarea { font-family: var(--mono); }
 .stage-canvas canvas:active { cursor: grabbing; }
 .stage-2d canvas { cursor: crosshair; }
 .canvas-hint { position: absolute; right: 14px; bottom: 10px; font-size: 11px; color: var(--dimmer); letter-spacing: .08em; pointer-events: none; }
+.pval-input {
+  position: absolute;
+  z-index: 10;
+  width: 96px;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 5px 8px;
+  outline: none;
+  box-shadow: 0 4px 14px rgba(14, 122, 110, .25);
+}
 
 .stage-status {
   flex: none;

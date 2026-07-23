@@ -94,13 +94,18 @@ CF.Editor = (function () {
     m.board.pinsTop.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowT }); });
     m.board.pinsBottom.forEach((n, i) => { if (n.trim() === 'GND') gndHoles.push({ c: m.b0 + i, r: m.rowB }); });
     for (let i = 1; i < gndHoles.length; i++) uf.union(nodeOf(gndHoles[0]), nodeOf(gndHoles[i]));
-    // 被動元件（電阻）把兩端節點「透過元件」連通
+    // 被動元件依「直流導通性」決定是否連通兩端：
+    //   電阻/電感/LDR/NTC 導通；電容/電解電容/二極體不導通（DC 阻斷或方向性）；
+    //   滑動開關依 ON/OFF 狀態。mode==='noRes' 時額外排除電阻（限流電阻檢查用）。
     if (withPassive) {
       for (const ep of st.parts) {
-        if (CF.PARTS[ep.id].cls === 'PASSIVE') {
-          const pp = partPins(ep);
-          uf.union(nodeOf(pp[0].hole), nodeOf(pp[1].hole));
-        }
+        const def = CF.PARTS[ep.id];
+        if (def.cls !== 'PASSIVE') continue;
+        const conducts = def.conduct === 'always' || (def.conduct === 'switch' && ep.closed !== false);
+        if (!conducts) continue;
+        if (withPassive === 'noRes' && ep.id === 'resistor') continue;
+        const pp = partPins(ep);
+        uf.union(nodeOf(pp[0].hole), nodeOf(pp[1].hole));
       }
     }
     return { uf, gndHoles };
@@ -111,7 +116,7 @@ CF.Editor = (function () {
     const m = boardMeta();
     const board = m.board;
     const { uf, gndHoles } = buildUF(true);
-    const ufNoP = buildUF(false).uf;   // 不含電阻的直接連通（限流檢查用）
+    const ufNoP = buildUF('noRes').uf;   // 不經電阻的連通（限流電阻檢查用）
 
     const gndNet = gndHoles.length ? uf.find(nodeOf(gndHoles[0])) : null;
     const powerNets = {};   // 電壓 → net
@@ -188,7 +193,7 @@ CF.Editor = (function () {
         }
       });
       const entry = { id: ep.id, def, pins, side: ep.side, uid: ep.uid };
-      if (def.cls === 'PASSIVE') entry.value = ep.value || 220;
+      if (def.cls === 'PASSIVE') { entry.value = ep.value || def.defaultValue; entry.closed = ep.closed; }
       parts.push(entry);
     }
 
@@ -205,6 +210,34 @@ CF.Editor = (function () {
       }
     }
     if (st.parts.some(p => p.id === 'pump')) info('水泵驅動', '實體接線請經繼電器／MOSFET 模組驅動水泵，勿由 GPIO 直接供電。');
+
+    // 極性與開關檢查（電解電容／二極體／滑動開關）
+    const onV = n => Object.values(powerNets).includes(n);
+    const onG = n => gndNet !== null && n === gndNet;
+    for (const ep of st.parts) {
+      const def = CF.PARTS[ep.id];
+      if (def.cls !== 'PASSIVE') continue;
+      const pp = partPins(ep);
+      const holes = pp.map(p => `${p.hole.c}|${p.hole.r}`);
+      const touched = st.wires.some(w => holes.includes(`${w.a.c}|${w.a.r}`) || holes.includes(`${w.b.c}|${w.b.r}`));
+      if (!touched) continue;
+      const nA = uf.find(nodeOf(pp[0].hole));
+      const nB = uf.find(nodeOf(pp[1].hole));
+      if (ep.id === 'diode') {
+        if (onV(nA) && onG(nB)) err('二極體順向短路', '陽極 A 接電源、陰極 K 接地＝順向導通直通地，等同短路。反接保護應將 K 朝電源側。');
+        else if (onG(nA) && onV(nB)) pass('保護二極體', '二極體反向跨接電源（截止），反接保護方向正確。');
+      }
+      if (ep.id === 'ecap') {
+        if (onG(nA) && onV(nB)) err('電解電容反接', '「＋」極接到 GND、「−」極接到電源——反接會損壞甚至爆裂，請反轉方向。');
+        else if (onV(nA) && onG(nB)) pass('去耦電容', '電解電容方向正確，已跨接電源軌儲能。');
+      }
+      if (ep.id === 'capacitor' && ((onV(nA) && onG(nB)) || (onG(nA) && onV(nB)))) {
+        pass('去耦電容', '陶瓷電容已跨接電源與 GND，可吸收高頻雜訊。');
+      }
+      if (ep.id === 'switch' && ep.closed === false) {
+        info('開關為 OFF', '滑動開關目前切在 OFF，經過它的路徑不導通；點兩下可切換。');
+      }
+    }
 
     // GPIO 重複（I2C 同號腳共用 SDA/SCL 允許）
     for (const [key, users] of Object.entries(gpioUse)) {
@@ -519,11 +552,22 @@ CF.Editor = (function () {
     ctx.fillStyle = '#ffffff';
     ctx.font = `600 ${Math.max(9, g.step * 0.55)}px "IBM Plex Mono","Noto Sans TC",monospace`;
     ctx.textAlign = 'center';
-    const label = fp.passive
-      ? ((ep.value || 220) >= 1000 ? (ep.value || 220) / 1000 + 'kΩ' : (ep.value || 220) + 'Ω')
-      : def.titleName;
+    let label = def.titleName;
+    if (fp.passive) {
+      if (def.conduct === 'switch') label = ep.closed === false ? 'OFF' : 'ON';
+      else label = String(ep.value || def.defaultValue || '');
+    }
+    if (fp.passive && def.conduct === 'switch') {
+      ctx.fillStyle = ep.closed === false ? '#e8e4da' : '#7fe8c9';
+    }
     ctx.fillText(label, x0 + w / 2, y0 + h / 2 + 4, w - 4);
     ctx.textAlign = 'left';
+    // 極性標記：電解電容「+」、二極體「▸」（A→K 方向）
+    if (fp.passive && def.polarized) {
+      ctx.fillStyle = '#ffd9a0';
+      ctx.font = `700 ${Math.max(9, g.step * 0.5)}px "IBM Plex Mono",monospace`;
+      ctx.fillText(def.id === 'diode' ? '▸' : '+', x0 + 2, y0 - 3);
+    }
     ctx.globalAlpha = 1;
     // hover 腳名
     if (st.hover) {
@@ -667,7 +711,8 @@ CF.Editor = (function () {
     if (st.placing) {
       if (st.ghost && st.ghost.ok) {
         const np = { uid: st.uidSeq++, id: st.placing, c0: st.ghost.c0, side: st.ghost.side };
-        if (CF.PARTS[st.placing].cls === 'PASSIVE') np.value = 220;
+        const pdef = CF.PARTS[st.placing];
+        if (pdef.cls === 'PASSIVE') { np.value = pdef.defaultValue; if (pdef.conduct === 'switch') np.closed = true; }
         st.parts.push(np);
         st.placing = null; st.ghost = null;
         changed();
@@ -717,6 +762,41 @@ CF.Editor = (function () {
     if (e.key === 'Escape') { st.placing = null; st.wireStart = null; render(); }
   }
 
+  /* 規格值輸入框（自由輸入，例如 4.7k、100nF、470Ω） */
+  function openValueEditor(ep) {
+    const def = CF.PARTS[ep.id];
+    const b = ep._bbox;
+    if (!b) return;
+    const old = st.canvas.parentElement.querySelector('.pval-input');
+    if (old) old.remove();
+    const input = document.createElement('input');
+    input.className = 'pval-input';
+    input.value = ep.value || def.defaultValue || '';
+    input.maxLength = 12;
+    input.style.left = Math.max(4, b.x0) + 'px';
+    input.style.top = Math.max(4, b.y0 - 30) + 'px';
+    st.canvas.parentElement.appendChild(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const commit = ok => {
+      if (done) return;
+      done = true;
+      if (ok) {
+        const v = input.value.trim().slice(0, 12);
+        if (v) ep.value = v;
+      }
+      input.remove();
+      changed();
+    };
+    input.addEventListener('keydown', e => {
+      e.stopPropagation();
+      if (e.key === 'Enter') commit(true);
+      if (e.key === 'Escape') commit(false);
+    });
+    input.addEventListener('blur', () => commit(true));
+  }
+
   function changed() {
     derive();
     render();
@@ -747,7 +827,7 @@ CF.Editor = (function () {
     while (c0 < COLS - (fp.bodyW || fp.w) && overlaps(partId, c0, side)) c0++;
     if (overlaps(partId, c0, side)) return { ok: false, error: '麵包板空間不足' };
     const np = { uid: st.uidSeq++, id: partId, c0, side };
-    if (def.cls === 'PASSIVE') np.value = 220;
+    if (def.cls === 'PASSIVE') { np.value = def.defaultValue; if (def.conduct === 'switch') np.closed = true; }
     st.parts.push(np);
 
     const assigned = [];
@@ -811,7 +891,7 @@ CF.Editor = (function () {
     return {
       boardId: st.boardId,
       conn: st.conn,
-      parts: st.parts.map(p => ({ id: p.id, c0: p.c0, side: p.side, value: p.value })),
+      parts: st.parts.map(p => ({ id: p.id, c0: p.c0, side: p.side, value: p.value, closed: p.closed })),
       wires: st.wires.map(w => ({ a: { c: w.a.c, r: w.a.r }, b: { c: w.b.c, r: w.b.r } }))
     };
   }
@@ -819,7 +899,7 @@ CF.Editor = (function () {
     if (!d) return;
     st.boardId = d.boardId || 'esp32';
     st.conn = d.conn || 'mqtt';
-    st.parts = (d.parts || []).filter(p => CF.PARTS[p.id]).map(p => ({ uid: st.uidSeq++, id: p.id, c0: p.c0, side: p.side, value: p.value }));
+    st.parts = (d.parts || []).filter(p => CF.PARTS[p.id]).map(p => ({ uid: st.uidSeq++, id: p.id, c0: p.c0, side: p.side, value: p.value, closed: p.closed }));
     st.wires = (d.wires || []).map(w => ({ uid: st.uidSeq++, a: w.a, b: w.b }));
     st.sel = null; st.wireStart = null; st.placing = null;
     changed();
@@ -839,14 +919,16 @@ CF.Editor = (function () {
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('pointerup', onUp);
       canvas.addEventListener('dblclick', e => {
-        // 點兩下電阻切換阻值
+        // 點兩下被動元件：開關切換 ON/OFF，其餘開啟規格值輸入框
         const [x, y] = localXY(e);
         const p = pickPart(x, y);
-        if (p && CF.PARTS[p.id].cls === 'PASSIVE') {
-          const vals = CF.PARTS[p.id].values || [220, 330, 1000, 4700, 10000];
-          p.value = vals[(vals.indexOf(p.value || 220) + 1) % vals.length];
+        if (!p || CF.PARTS[p.id].cls !== 'PASSIVE') return;
+        if (CF.PARTS[p.id].conduct === 'switch') {
+          p.closed = p.closed === false ? true : false;
           changed();
+          return;
         }
+        openValueEditor(p);
       });
       canvas.addEventListener('pointerleave', () => { st.hover = null; render(); });
       window.addEventListener('keydown', onKey);
@@ -862,6 +944,12 @@ CF.Editor = (function () {
     clear() { st.parts = []; st.wires = []; st.sel = null; changed(); },
     getPlan() { return st.plan || derive(); },
     getState() { return { tool: st.tool, placing: st.placing, boardId: st.boardId, conn: st.conn }; },
+    getPartBox(partId) {
+      const ep = st.parts.find(p => p.id === partId);
+      if (!ep || !ep._bbox) return null;
+      const b = ep._bbox;
+      return { x: b.x0 + b.w / 2, y: b.y0 + b.h / 2 };
+    },
     resize
   };
 })();
