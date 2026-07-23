@@ -626,6 +626,11 @@
 
   /* ---------------- 事件 ---------------- */
   function bind() {
+    $('#helpBtn').addEventListener('click', () => { $('#helpOverlay').hidden = false; });
+    $('#helpClose').addEventListener('click', () => { $('#helpOverlay').hidden = true; });
+    $('#helpOverlay').addEventListener('click', e => { if (e.target === $('#helpOverlay')) $('#helpOverlay').hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#helpOverlay').hidden = true; });
+
     $('#modeViewBtn').addEventListener('click', () => setMode('view'));
     $('#modeEditBtn').addEventListener('click', () => setMode('edit'));
 

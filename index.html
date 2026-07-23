@@ -35,7 +35,10 @@
 
   <!-- ═══════ 左欄：任務描述 ═══════ -->
   <aside class="panel panel-left">
-    <div class="sec-label">01 / 選擇情境</div>
+    <div class="sec-row">
+      <div class="sec-label">01 / 選擇情境</div>
+      <button id="helpBtn" class="help-btn" type="button">？ 使用說明</button>
+    </div>
 
     <div class="req-label">快速生成方案</div>
     <select id="quickGen" class="quick-select">
@@ -191,6 +194,35 @@
   </aside>
 
 </main>
+
+<!-- 使用說明 -->
+<div id="helpOverlay" class="help-overlay" hidden>
+  <div class="help-modal">
+    <div class="help-head">
+      <span>使用說明</span>
+      <button id="helpClose" class="ag-icon" type="button">✕</button>
+    </div>
+    <div class="help-body">
+      <h4>三步驟上手</h4>
+      <ol>
+        <li><b>生成方案</b>：左欄下拉選單或案例膠囊，一鍵生成電路＋接線＋程式碼；3D 工作台可拖曳旋轉、滾輪縮放。</li>
+        <li><b>自由編輯（可選）</b>：切到「自由編輯」，從元件盤放元件、用「拉線」工具點兩個孔連線。同一直排的孔彼此導通；ERC 會即時告訴你哪裡接錯（未供電、短路、缺限流電阻…）。</li>
+        <li><b>通電驗證</b>：右欄「模擬」分頁按「通電」——接錯不給電；通電後拉桿調感測值，LED／蜂鳴器／OLED／MQTT 主控台即時反應。沒問題就「匯出專案」拿 ZIP 去燒錄。</li>
+      </ol>
+
+      <h4>讓 AI 助手幫你做（右下角 <span class="help-claw">🐾</span> 按鈕）</h4>
+      <p>第一次使用：點對話框右上 ⚙，貼上 Google API Key（<b>aistudio.google.com</b> 免費申請，金鑰只存在你的瀏覽器）。</p>
+      <p>一句話描述的公式：<b>「元件／感測什麼 ＋ 條件 ＋ 動作／怎麼回報」</b>，例如：</p>
+      <ul>
+        <li>「幫我做一個<b>土壤過乾就自動澆水</b>並用 <b>MQTT 回報</b>的裝置」</li>
+        <li>「<b>溫度超過 32 度</b>就<b>響蜂鳴器</b>，OLED 顯示目前溫濕度」</li>
+        <li>「用 <b>ESP32-CAM</b> 做一個<b>偵測到人就拍照警報</b>的門口監視」</li>
+      </ul>
+      <p>不用寫板子型號也可以，助手會自己選。做完之後你隨時可以繼續下指令：「PIR 改接 GPIO 15」「加一顆 LED」「通電測試看看」「匯出專案」；也可以純提問（「I2C 是什麼？」「為什麼 ERC 報錯？」），助手解釋完會問你要不要直接幫你改。</p>
+      <p class="help-dim">邊做邊問也行：在自由編輯模式中求助時，助手會用小步驟幫你加元件、接線，不會蓋掉你已經接好的作品。需求超出元件庫（GPS、藍牙等）時，助手會直接告訴你目前無法實現。</p>
+    </div>
+  </div>
+</div>
 
 <footer class="statusbar">
   <div><span class="dot dot-green"></span>規則引擎已連線</div>
