@@ -21,6 +21,7 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   background: var(--bg);
@@ -110,6 +111,20 @@ select, input, textarea { font-family: var(--mono); }
 .lede { font-family: var(--sans); font-size: 13.5px; line-height: 1.8; color: var(--dim); margin-bottom: 24px; }
 
 .req-label { font-size: 11px; letter-spacing: .16em; color: var(--text); margin-bottom: 10px; font-weight: 600; }
+.quick-select {
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  color: var(--text-bright);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  padding: 12px 12px;
+  outline: none;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+.quick-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .req-box { position: relative; border: 1px solid var(--border-2); border-radius: 10px; background: #fff; margin-bottom: 16px; overflow: hidden; }
 .req-box textarea {
   display: block;

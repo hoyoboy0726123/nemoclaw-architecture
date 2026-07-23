@@ -35,20 +35,15 @@
 
   <!-- ═══════ 左欄：任務描述 ═══════ -->
   <aside class="panel panel-left">
-    <div class="sec-label">01 / 描述需求</div>
+    <div class="sec-label">01 / 選擇情境</div>
 
-    <div class="req-label">IoT 應用需求</div>
-    <div class="req-box">
-      <textarea id="reqInput" spellcheck="false"></textarea>
-      <span id="reqTag" class="req-tag">REQ.001</span>
-    </div>
+    <div class="req-label">快速生成方案</div>
+    <select id="quickGen" class="quick-select">
+      <option value="" disabled selected>⚡ 選擇範例情境，立即生成…</option>
+    </select>
 
     <div id="quickChips" class="chip-wrap quick-wrap"></div>
     <div id="caseGroups"></div>
-
-    <button id="generateBtn" class="generate-btn" type="button">
-      <span>重新生成方案</span><span class="gen-icon">↗</span>
-    </button>
 
     <div class="supported">
       <div id="supportedCount" class="supported-count">SUPPORTED / 0</div>
