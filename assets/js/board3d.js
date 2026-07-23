@@ -1,5 +1,5 @@
 'use strict';
-/* 焊點 CIRCUIT FORGE — 3D 麵包板工作台（純 Canvas，自寫投影＋畫家演算法） */
+/* NemoClaw 電路實驗室 — 3D 麵包板工作台（純 Canvas，自寫投影＋畫家演算法） */
 window.CF = window.CF || {};
 
 CF.Board3D = (function () {
@@ -469,6 +469,21 @@ CF.Board3D = (function () {
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const proj = projFactory();
+
+    /* 淺色底：板下柔和陰影 */
+    {
+      const pL = proj([-35, 0, 1]), pR = proj([35, 0, 1]);
+      const pN = proj([0, 0, -12.5]), pF = proj([0, 0, 12.5]);
+      const cx0 = (pL[0] + pR[0]) / 2, cy0 = (pN[1] + pF[1]) / 2 + 8;
+      const rx = Math.abs(pR[0] - pL[0]) / 2 + 26;
+      const ry = Math.abs(pF[1] - pN[1]) / 2 + 18;
+      for (let i = 3; i >= 1; i--) {
+        ctx.beginPath();
+        ctx.ellipse(cx0, cy0, rx * (0.75 + i * 0.09), ry * (0.7 + i * 0.11), 0, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(70, 58, 34, ${0.028 * (4 - i)})`;
+        ctx.fill();
+      }
+    }
 
     const items = [];
     for (const q of scene.polys) {

@@ -1,5 +1,5 @@
 'use strict';
-/* 焊點 CIRCUIT FORGE — 規則引擎：需求解析、腳位指派、接線網表、規則檢查 */
+/* NemoClaw 電路實驗室 — 規則引擎：需求解析、腳位指派、接線網表、規則檢查 */
 window.CF = window.CF || {};
 
 (function () {

@@ -1,5 +1,5 @@
 'use strict';
-/* 焊點 CIRCUIT FORGE — 極簡 ZIP 打包（store 模式，無壓縮） */
+/* NemoClaw 電路實驗室 — 極簡 ZIP 打包（store 模式，無壓縮） */
 window.CF = window.CF || {};
 
 CF.makeZip = (function () {

@@ -1,5 +1,5 @@
 'use strict';
-/* 焊點 CIRCUIT FORGE — 程式碼產生器：main.cpp / platformio.ini / config.h / circuit.json */
+/* NemoClaw 電路實驗室 — 程式碼產生器：main.cpp / platformio.ini / config.h / circuit.json */
 window.CF = window.CF || {};
 
 (function () {
@@ -133,7 +133,7 @@ window.CF = window.CF || {};
         '  display.setTextSize(1);',
         '  display.setTextColor(SSD1306_WHITE);',
         '  display.setCursor(0, 0);',
-        '  display.print("CIRCUIT FORGE READY");',
+        '  display.print("NEMOCLAW LAB READY");',
         '  display.display();');
     }
     /* ---- 連線堆疊 ---- */
@@ -228,11 +228,11 @@ window.CF = window.CF || {};
         const page = [
           '<!DOCTYPE html><html lang=zh-Hant><meta charset=utf-8>',
           '<meta name=viewport content="width=device-width,initial-scale=1">',
-          '<title>CIRCUIT FORGE NODE</title>',
+          '<title>NEMOCLAW LAB NODE</title>',
           '<style>body{background:#0b0a08;color:#e8e4da;font-family:monospace;padding:24px}',
           'h1{color:#ff5a3c;font-size:18px}#data{font-size:15px;line-height:1.8}',
           'button{background:#ff5a3c;border:0;color:#160502;padding:8px 14px;font-family:monospace;cursor:pointer}</style>',
-          '<h1>CIRCUIT FORGE / LOCAL NODE</h1><pre id=data>loading...</pre>'
+          '<h1>NEMOCLAW LAB / LOCAL NODE</h1><pre id=data>loading...</pre>'
         ];
         if (P('led')) page.push('<button onclick="cmd(1)">LED ON</button> <button onclick="cmd(0)">LED OFF</button>');
         page.push(
@@ -392,7 +392,7 @@ window.CF = window.CF || {};
       'input{width:70%;background:#141310;border:1px solid #2a2721;color:#e8e4da;padding:8px;font-family:monospace}',
       'button{background:#ff5a3c;border:0;color:#160502;padding:8px 14px;font-family:monospace;cursor:pointer}',
       '#label{font-size:20px;color:#4ade80;margin-top:12px}#motion{color:#f5c33b}</style>',
-      '<h1>CIRCUIT FORGE / ESP32-CAM' + (tmMode ? ' + TEACHABLE MACHINE' : '') + '</h1>',
+      '<h1>NEMOCLAW LAB / ESP32-CAM' + (tmMode ? ' + TEACHABLE MACHINE' : '') + '</h1>',
       '<img id=cam src=/capture>'
     ];
     if (pir) page.push('<div id=motion>PIR: --</div>');
@@ -573,7 +573,7 @@ window.CF = window.CF || {};
     }
     if (plan.conn === 'mqtt' || (plan.board.camera && plan.conn === 'mqtt')) libs.add('knolleary/PubSubClient@^2.8');
     const lines = [
-      `; 焊點 CIRCUIT FORGE 產生 — ${plan.title}`,
+      `; NemoClaw 電路實驗室 產生 — ${plan.title}`,
       `[env:${plan.board.pio.board}]`,
       `platform = ${plan.board.pio.platform}`,
       `board = ${plan.board.pio.board}`,
@@ -597,7 +597,7 @@ window.CF = window.CF || {};
       '#define WIFI_SSID     "YOUR_WIFI_SSID"',
       '#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"',
       '',
-      `#define DEVICE_ID "forge-${plan.board.id}-01"`
+      `#define DEVICE_ID "nemoclaw-${plan.board.id}-01"`
     ];
     if (plan.conn === 'mqtt') {
       lines.push(
@@ -605,8 +605,8 @@ window.CF = window.CF || {};
         '// ---- MQTT ----',
         '#define MQTT_HOST "broker.hivemq.com"',
         '#define MQTT_PORT 1883',
-        `#define MQTT_TOPIC     "circuit-forge/${plan.board.id}/telemetry"`,
-        `#define MQTT_CMD_TOPIC "circuit-forge/${plan.board.id}/cmd"`);
+        `#define MQTT_TOPIC     "nemoclaw-lab/${plan.board.id}/telemetry"`,
+        `#define MQTT_CMD_TOPIC "nemoclaw-lab/${plan.board.id}/cmd"`);
     }
     lines.push('');
     return lines.join('\n');
@@ -614,7 +614,7 @@ window.CF = window.CF || {};
 
   function genCircuitJson(plan) {
     const data = {
-      generator: 'circuit-forge',
+      generator: 'nemoclaw-circuit-lab',
       version: 1,
       title: plan.title,
       board: { id: plan.board.id, name: plan.board.name },
