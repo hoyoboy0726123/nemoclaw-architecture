@@ -1,5 +1,5 @@
 'use strict';
-/* 焊點 CIRCUIT FORGE — 資料層：開發板、元件庫、案例庫、關鍵字規則 */
+/* NemoClaw 電路實驗室 — 資料層：開發板、元件庫、案例庫、關鍵字規則 */
 window.CF = window.CF || {};
 
 /* ---------------- 開發板 ---------------- */
@@ -271,3 +271,32 @@ CF.CASE_GROUPS = [
 ];
 
 CF.SUPPORTED = ['ESP32', 'ESP32-CAM', 'ARDUINO NANO', 'CAMERA', 'DHT', 'BME280', 'BH1750', 'PIR', 'HC-SR04', 'SOIL', 'OLED', 'BUTTON', 'LED', 'BUZZER', 'SERVO', 'RELAY', 'MQTT', 'HTTP', 'WEB SERVER', 'TEACHABLE MACHINE'];
+
+/* ---------------- 2D 自由編輯器 footprint ----------------
+ * w: 佔用孔位欄數（腳位數）；gap: 跨中央溝槽（按鈕）；color: 2D 方塊色
+ */
+CF.FOOTPRINTS = {
+  dht11:  { w: 3, color: '#3a6bc4' },
+  bme280: { w: 4, color: '#5b3e94' },
+  bh1750: { w: 4, color: '#2b4a8e' },
+  pir:    { w: 3, color: '#1e5a33' },
+  hcsr04: { w: 4, color: '#2b57a8' },
+  soil:   { w: 3, color: '#1c3a5e' },
+  oled:   { w: 4, color: '#1c2f63' },
+  button: { w: 3, color: '#3a3a3a', gap: true },
+  led:    { w: 2, color: '#c2402a' },
+  buzzer: { w: 2, color: '#2c2c2c' },
+  servo:  { w: 3, color: '#3f7ac2' },
+  relay:  { w: 3, color: '#2b57c8' }
+};
+
+/* ---------------- 行為模擬器：虛擬感測器輸入 ---------------- */
+CF.SIM_INPUTS = {
+  dht11:  [{ key: 'temp', label: '溫度', unit: '°C', min: -10, max: 50, step: 0.5, init: 24.5 },
+           { key: 'humi', label: '濕度', unit: '%', min: 0, max: 100, step: 1, init: 55 }],
+  bme280: [{ key: 'bmeTemp', label: 'BME 溫度', unit: '°C', min: -10, max: 50, step: 0.5, init: 24 },
+           { key: 'pressure', label: '氣壓', unit: 'hPa', min: 950, max: 1050, step: 1, init: 1013 }],
+  bh1750: [{ key: 'lux', label: '光照', unit: 'lx', min: 0, max: 2000, step: 10, init: 420 }],
+  hcsr04: [{ key: 'dist', label: '距離', unit: 'cm', min: 2, max: 300, step: 1, init: 80 }],
+  soil:   [{ key: 'soil', label: '土壤原始值', unit: '', min: 0, max: 4095, step: 10, init: 1800 }]
+};

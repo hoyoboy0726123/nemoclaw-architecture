@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>焊點 · CIRCUIT FORGE</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='7' width='18' height='18' fill='none' stroke='%23ff5a3c' stroke-width='2.5' transform='rotate(45 16 16)'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ff5a3c'/%3E%3C/svg%3E">
+<meta name="color-scheme" content="light">
+<title>NemoClaw · 電路實驗室</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='20' r='5' fill='none' stroke='%230e7a6e' stroke-width='2.5'/%3E%3Cpath d='M12 15 L8 7 M16 14 L16 5 M20 15 L24 7' stroke='%230e7a6e' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -16,17 +16,18 @@
 <header class="topbar">
   <div class="brand">
     <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <rect x="9" y="9" width="22" height="22" fill="none" stroke="#ff5a3c" stroke-width="2.4" transform="rotate(45 20 20)"/>
-      <circle cx="20" cy="20" r="3" fill="#ff5a3c"/>
-      <path d="M20 20 L29 11" stroke="#ff5a3c" stroke-width="2"/>
-      <circle cx="29" cy="11" r="2" fill="#ff5a3c"/>
+      <circle cx="20" cy="25" r="6.5" fill="none" stroke="#0e7a6e" stroke-width="2.6"/>
+      <path d="M14.5 19 L9 9 M20 17.5 L20 6 M25.5 19 L31 9" stroke="#0e7a6e" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="9" cy="9" r="2" fill="#0e7a6e"/>
+      <circle cx="20" cy="6" r="2" fill="#0e7a6e"/>
+      <circle cx="31" cy="9" r="2" fill="#0e7a6e"/>
     </svg>
     <div class="brand-text">
-      <span class="brand-cjk">焊點</span>
-      <span class="brand-sub">CIRCUIT FORGE / 01</span>
+      <span class="brand-cjk">電路實驗室</span>
+      <span class="brand-sub">NEMOCLAW CIRCUIT LAB</span>
     </div>
   </div>
-  <div class="engine-status"><span class="dot dot-green"></span>LOCAL ENGINE <b>READY</b></div>
+  <div class="engine-status"><span class="dot dot-green"></span>LAB ENGINE <b>READY</b></div>
   <button id="exportBtn" class="export-btn" type="button">匯出專案 <span class="arrow">↓</span></button>
 </header>
 
@@ -34,11 +35,11 @@
 
   <!-- ═══════ 左欄：任務描述 ═══════ -->
   <aside class="panel panel-left">
-    <div class="sec-label">01 / 任務描述</div>
-    <h1 class="headline">把想法<br><span class="accent">接上電</span><span class="dim">。</span></h1>
-    <p class="lede">用一句話描述 IoT 應用，系統會產生受控接線、3D 工作台與可編譯程式。</p>
+    <div class="sec-label">01 / 描述需求</div>
+    <h1 class="headline">接對了，<br><span class="accent">就會動</span><span class="dim">。</span></h1>
+    <p class="lede">一句話生成方案，或切到自由編輯自己接線——規則檢查告訴你哪裡不通，模擬器讓電路先動起來再燒錄。</p>
 
-    <div class="req-label">IoT 運用需求</div>
+    <div class="req-label">IoT 應用需求</div>
     <div class="req-box">
       <textarea id="reqInput" spellcheck="false"></textarea>
       <span id="reqTag" class="req-tag">REQ.001</span>
@@ -57,48 +58,84 @@
     </div>
   </aside>
 
-  <!-- ═══════ 中欄：電路工作台 ═══════ -->
+  <!-- ═══════ 中欄：工作台 ═══════ -->
   <section class="panel panel-center">
     <div class="stage-head">
       <div class="stage-head-text">
         <div class="sec-label">02 / 電路工作台</div>
         <h2 id="planTitle" class="plan-title">—</h2>
       </div>
+      <div class="mode-switch">
+        <button id="modeViewBtn" class="mode-btn active" type="button">3D 檢視</button>
+        <button id="modeEditBtn" class="mode-btn" type="button">自由編輯</button>
+      </div>
+    </div>
+
+    <!-- 3D 檢視工具列 -->
+    <div id="viewToolbar" class="stage-sub">
+      <div class="stage-tags"><span class="dot dot-green"></span><span id="stageTags">BREADBOARD 3D</span></div>
       <div class="stage-tools">
         <button id="pinLabelBtn" class="tool-btn on" type="button"><span class="lbl">PIN 標籤</span><span class="state">ON</span></button>
         <button id="panBtn" class="tool-btn" type="button"><span class="lbl">上下移動</span><span class="state">OFF</span></button>
         <button id="resetViewBtn" class="tool-btn" type="button"><span class="lbl">重設視角</span></button>
       </div>
-    </div>
-
-    <div class="stage-sub">
-      <div class="stage-tags"><span class="dot dot-green"></span><span id="stageTags">BREADBOARD 3D</span></div>
       <div class="legend">
-        <span class="legend-item"><i style="background:#e0452e"></i>電源</span>
-        <span class="legend-item"><i style="background:#4d7dff"></i>GND</span>
-        <span class="legend-item"><i style="background:#f0c33c"></i>訊號</span>
+        <span class="legend-item"><i style="background:#c2402a"></i>電源</span>
+        <span class="legend-item"><i style="background:#3b62c4"></i>GND</span>
+        <span class="legend-item"><i style="background:#b7791f"></i>訊號</span>
       </div>
     </div>
 
-    <div class="stage-canvas">
+    <!-- 編輯器工具列 -->
+    <div id="editToolbar" class="edit-toolbar" hidden>
+      <div class="edit-row">
+        <select id="editBoardSel" class="edit-sel" title="開發板">
+          <option value="esp32">ESP32 DevKit V1</option>
+          <option value="esp32cam">ESP32-CAM</option>
+          <option value="nano">Arduino Nano</option>
+        </select>
+        <select id="editConnSel" class="edit-sel" title="連線方式">
+          <option value="mqtt">MQTT</option>
+          <option value="http">HTTP REST</option>
+          <option value="web">Web Server</option>
+          <option value="none">不連網</option>
+        </select>
+        <span class="edit-sep"></span>
+        <button id="toolSelect" class="edit-tool active" type="button">選取／移動</button>
+        <button id="toolWire" class="edit-tool" type="button">拉線</button>
+        <button id="toolDelete" class="edit-tool" type="button">刪除</button>
+        <span class="edit-sep"></span>
+        <button id="editImport" class="edit-act" type="button">載入目前方案</button>
+        <button id="editClear" class="edit-act" type="button">清空</button>
+        <span id="ercBadge" class="erc-badge erc-ok">ERC ✓</span>
+      </div>
+      <div id="partPalette" class="part-palette"></div>
+    </div>
+
+    <div id="stage3d" class="stage-canvas">
       <canvas id="board3d"></canvas>
       <div class="canvas-hint">拖曳旋轉 · 滾輪縮放</div>
+    </div>
+    <div id="stage2d" class="stage-canvas stage-2d" hidden>
+      <canvas id="editor2d"></canvas>
+      <div class="canvas-hint">同一直排的孔彼此導通 · Delete 刪除選取 · Esc 取消</div>
     </div>
 
     <div class="stage-status">
       <div class="stat"><div class="stat-k">BOARD</div><div id="statBoard" class="stat-v">—</div></div>
       <div class="stat"><div class="stat-k">PARTS</div><div id="statParts" class="stat-v">00</div></div>
       <div class="stat"><div class="stat-k">WIRES</div><div id="statWires" class="stat-v">00</div></div>
-      <div class="stat stat-done"><span class="done-box">✓</span><span id="statDone">接線已建立</span></div>
+      <div class="stat stat-done"><span id="doneBox" class="done-box">✓</span><span id="statDone">接線已建立</span></div>
     </div>
   </section>
 
-  <!-- ═══════ 右欄：CODE / WIRING / CHECKS / 說明 ═══════ -->
+  <!-- ═══════ 右欄 ═══════ -->
   <aside class="panel panel-right">
     <nav class="tabs">
       <button class="tab active" data-tab="code" type="button">CODE</button>
       <button class="tab" data-tab="wiring" type="button">WIRING</button>
       <button class="tab" data-tab="checks" type="button">CHECKS</button>
+      <button class="tab" data-tab="sim" type="button">模擬</button>
       <button class="tab" data-tab="docs" type="button">說明</button>
     </nav>
 
@@ -125,6 +162,14 @@
         <span id="checkCount" class="panel-head-count">0 RULES</span>
       </div>
       <div id="checkList" class="check-list"></div>
+    </div>
+
+    <div id="tab-sim" class="tab-panel" hidden>
+      <div class="panel-head">
+        <span class="panel-head-title">SIMULATION</span>
+        <span id="simStatus" class="panel-head-count">POWER OFF</span>
+      </div>
+      <div id="simBody" class="sim-body"></div>
     </div>
 
     <div id="tab-docs" class="tab-panel" hidden>
@@ -156,14 +201,16 @@
 
 <footer class="statusbar">
   <div><span class="dot dot-green"></span>規則引擎已連線</div>
-  <div>CTRL / DRAG TO ORBIT</div>
-  <div>TAIPEI · LOCAL BUILD</div>
+  <div>DRAG TO ORBIT · WIRE BY CLICK</div>
+  <div>NEMOCLAW LAB · LOCAL BUILD</div>
 </footer>
 
 <script src="assets/js/data.js"></script>
 <script src="assets/js/engine.js"></script>
 <script src="assets/js/codegen.js"></script>
 <script src="assets/js/board3d.js"></script>
+<script src="assets/js/editor.js"></script>
+<script src="assets/js/sim.js"></script>
 <script src="assets/js/zip.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
