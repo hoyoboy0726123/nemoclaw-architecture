@@ -128,7 +128,7 @@
     },
     {
       name: 'control_sim',
-      description: '控制行為模擬器：start 通電（ERC 未過會失敗）、stop 斷電、set_input 調虛擬感測值（key 如 temp/humi/lux/dist/soil/smoke/pot/waterTemp/accel）、event 觸發事件（motion 人體、button 按鈕）。',
+      description: '控制行為模擬器：start 通電（ERC 未過會失敗；回傳會確認 running）、stop 斷電、set_input 調虛擬感測值（key 限：temp/humi/bmeTemp/pressure/lux/dist/soil/smoke/pot/waterTemp/accel；立即生效，滑桿、3D OLED 與輸出會即時更新）、event 觸發事件（motion 人體、button 按鈕）。改完數值可用 get_state 確認 sim_running。',
       parameters: {
         type: 'object',
         properties: {
