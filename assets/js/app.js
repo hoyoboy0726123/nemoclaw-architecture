@@ -679,6 +679,102 @@
     CF.Sim.setHooks({ onTick: updateSimUi, onLog: updateSimLog });
   }
 
+  /* ---------------- Agent 橋接層：把全站操作包成可呼叫 API ---------------- */
+  function planSummary(plan) {
+    if (!plan) return { error: '尚無方案' };
+    return {
+      title: plan.title,
+      board: plan.board.name,
+      connectivity: plan.connLabel || '不連網',
+      power_rail: plan.railV,
+      parts: plan.parts.map(p => ({
+        id: p.id, name: p.def.name,
+        pins: p.pins.filter(x => x.assigned).map(x => `${x.n}→${x.assigned}`).join(', ') || (p.def.onboard ? '板載' : '電源軌')
+      })),
+      checks: plan.checks.map(c => `[${c.status.toUpperCase()}] ${c.name}：${c.desc}`),
+      erc_errors: plan.checks.filter(c => c.status === 'error').length,
+      counts: plan.counts
+    };
+  }
+
+  CF.App = {
+    generateFromText(text) {
+      $('#reqInput').value = text;
+      setMode('view');
+      generate();
+      return planSummary(state.plan);
+    },
+    getState() {
+      const plan = currentPlan();
+      return {
+        mode: state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）',
+        sim_running: CF.Sim.state.running,
+        plan: planSummary(plan)
+      };
+    },
+    setMode(mode) { setMode(mode); return { ok: true, mode }; },
+    setSignalPin(partId, pinName, gpio) {
+      if (state.mode !== 'view') return { ok: false, error: '改腳位工具僅適用於 3D 檢視模式；自由編輯請用接線工具' };
+      const net = state.plan.nets.find(n => !n.locked && n.partRef === partId && (!pinName || n.pinName === pinName));
+      if (!net) return { ok: false, error: `找不到 ${partId} 的可調訊號腳` };
+      const opts = CF.pinOptions(state.plan, net);
+      if (!opts.includes(gpio)) return { ok: false, error: `${gpio} 不可用，可選：${opts.join('、')}` };
+      CF.reassignPin(state.plan, net.id, gpio);
+      state.files = CF.genFiles(state.plan);
+      CF.Board3D.setPlan(state.plan);
+      renderTabsAll();
+      return { ok: true, changed: `${net.from} → ${gpio}` };
+    },
+    editorAddPart(partId) {
+      setMode('edit');
+      const r = CF.Editor.agentAddPart(partId);
+      return Object.assign(r, { state: planSummary(CF.Editor.getPlan()) });
+    },
+    editorRemovePart(partId) {
+      setMode('edit');
+      return CF.Editor.agentRemovePart(partId);
+    },
+    editorLoadPlan() {
+      setMode('edit');
+      CF.Editor.importPlan(state.plan);
+      return planSummary(CF.Editor.getPlan());
+    },
+    editorClear() {
+      setMode('edit');
+      CF.Editor.clear();
+      return { ok: true };
+    },
+    getCode(fileName) {
+      const f = state.files.find(x => x.name === fileName) || state.files[0];
+      return { file: f.name, content: f.content.length > 7000 ? f.content.slice(0, 7000) + '\n…(截斷)' : f.content };
+    },
+    sim(action, key, value, event) {
+      if (action === 'start') {
+        document.querySelector('.tab[data-tab="sim"]').click();
+        const r = CF.Sim.start();
+        updateSimUi();
+        return r.ok ? { ok: true, status: '模擬執行中' } : { ok: false, error: r.msg };
+      }
+      if (action === 'stop') { CF.Sim.stop(); updateSimUi(); return { ok: true }; }
+      if (action === 'set_input') { CF.Sim.setInput(key, value); return { ok: true, [key]: value }; }
+      if (action === 'event') {
+        if (event === 'motion') CF.Sim.pulseMotion();
+        if (event === 'button') { CF.Sim.setButton(true); setTimeout(() => CF.Sim.setButton(false), 500); }
+        return { ok: true, event };
+      }
+      return { ok: false, error: '未知動作' };
+    },
+    exportProject() { exportProject(); return { ok: true, note: 'ZIP 已開始下載' }; }
+  };
+  function renderTabsAll() {
+    renderCode();
+    renderWiring(state.plan);
+    renderChecks(state.plan);
+    renderDocs(state.plan);
+    CF.Sim.load(state.plan);
+    renderSimPanel(state.plan);
+  }
+
   /* ---------------- 啟動 ---------------- */
   document.addEventListener('DOMContentLoaded', () => {
     buildLeftPanel();

@@ -736,8 +736,80 @@ CF.Editor = (function () {
     render();
   }
 
+  /* ---------------- Agent 專用：自動放置＋自動接線 ---------------- */
+  function agentAddPart(partId) {
+    const def = CF.PARTS[partId];
+    const fp = CF.FOOTPRINTS[partId];
+    if (!def || !fp) return { ok: false, error: `未知元件 ${partId}` };
+    const m = boardMeta();
+    const side = def.cls === 'SENSOR' && partId !== 'pir' ? 'top' : 'bottom';
+    let c0 = m.b0 + m.n + 3;
+    while (c0 < COLS - (fp.bodyW || fp.w) && overlaps(partId, c0, side)) c0++;
+    if (overlaps(partId, c0, side)) return { ok: false, error: '麵包板空間不足' };
+    const np = { uid: st.uidSeq++, id: partId, c0, side };
+    if (def.cls === 'PASSIVE') np.value = 220;
+    st.parts.push(np);
+
+    const assigned = [];
+    if (def.cls !== 'PASSIVE') {
+      // 確保板子電源軌已建立
+      const uf0 = buildUF(false).uf;
+      const pw = boardPinHole(m.board.powerPin5V) || boardPinHole(m.board.powerPin3V3);
+      const gd = boardPinHole('GND');
+      if (pw && uf0.find(nodeOf(pw)) !== uf0.find('tv')) addWire(pw, { c: pw.c, r: TOP_ROWS.includes(pw.r) ? 'tv' : 'bv' });
+      if (gd && uf0.find(nodeOf(gd)) !== uf0.find('tg')) addWire(gd, { c: gd.c, r: 'tg' });
+      // 目前已占用的 GPIO
+      const cur = derive();
+      const used = new Set();
+      for (const p of cur.parts) for (const pin of p.pins) if (pin.assigned) used.add(pin.assigned);
+      const top = side === 'top';
+      for (const p of partPins(np)) {
+        const t = normType(def, p);
+        if (t === 'V') { addWire(p.hole, { c: p.hole.c, r: top ? 'tv' : 'bv' }); }
+        else if (t === 'G') { addWire(p.hole, { c: p.hole.c, r: top ? 'tg' : 'bg' }); }
+        else if (t === 'I2C_SDA' || t === 'I2C_SCL') {
+          const bp = boardPinHole(t === 'I2C_SDA' ? m.board.i2c.sda : m.board.i2c.scl);
+          if (bp) { addWire(p.hole, bp); assigned.push(`${p.name} → ${t === 'I2C_SDA' ? m.board.i2c.sda : m.board.i2c.scl}`); }
+        } else {
+          const macro = p.macro || findMacro(def, p.name);
+          const pool = t === 'A' && m.board.analogPool.length ? m.board.analogPool : m.board.digitalPool;
+          let gpio = m.board.prefer[macro];
+          if (!gpio || used.has(gpio) || !pool.includes(gpio)) gpio = pool.find(x => !used.has(x));
+          if (gpio) {
+            used.add(gpio);
+            const bp = boardPinHole(gpio);
+            if (bp) { addWire(p.hole, bp); assigned.push(`${p.name} → ${gpio}`); }
+          }
+        }
+      }
+      // 下排電源軌橋接
+      if (side === 'bottom') {
+        const uf1 = buildUF(false).uf;
+        if (uf1.find('tv') !== uf1.find('bv')) addWire({ c: 0, r: 'tv' }, { c: 0, r: 'bv' });
+        if (uf1.find('tg') !== uf1.find('bg')) addWire({ c: 1, r: 'tg' }, { c: 1, r: 'bg' });
+      }
+    }
+    changed();
+    return { ok: true, part: def.name, pins: assigned };
+  }
+
+  function agentRemovePart(partId) {
+    for (let i = st.parts.length - 1; i >= 0; i--) {
+      if (st.parts[i].id === partId) {
+        const holes = partPins(st.parts[i]).map(p => `${p.hole.c}|${p.hole.r}`);
+        st.parts.splice(i, 1);
+        st.wires = st.wires.filter(w => !holes.includes(`${w.a.c}|${w.a.r}`) && !holes.includes(`${w.b.c}|${w.b.r}`));
+        changed();
+        return { ok: true, removed: CF.PARTS[partId].name };
+      }
+    }
+    return { ok: false, error: `工作台上沒有 ${partId}` };
+  }
+
   /* ---------------- 對外 ---------------- */
   return {
+    agentAddPart,
+    agentRemovePart,
     init(canvas, opts) {
       st.canvas = canvas;
       st.ctx = canvas.getContext('2d');

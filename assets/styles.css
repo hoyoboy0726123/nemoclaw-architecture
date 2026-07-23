@@ -646,6 +646,135 @@ select, input, textarea { font-family: var(--mono); }
   background: var(--panel);
 }
 
+/* ═══════════ LAB AGENT ═══════════ */
+.ag-fab {
+  position: fixed;
+  right: 26px;
+  bottom: 54px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(14, 122, 110, .4);
+  z-index: 60;
+  transition: transform .15s;
+}
+.ag-fab:hover { transform: scale(1.07); background: var(--accent-hover); }
+.ag-panel {
+  position: fixed;
+  right: 26px;
+  bottom: 120px;
+  width: 400px;
+  max-width: calc(100vw - 40px);
+  height: min(600px, calc(100vh - 160px));
+  background: var(--panel);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(40, 32, 16, .22);
+  display: flex;
+  flex-direction: column;
+  z-index: 59;
+  overflow: hidden;
+}
+.ag-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+}
+.ag-title { color: var(--accent); font-size: 12.5px; font-weight: 700; letter-spacing: .18em; }
+.ag-model-tag { flex: 1; font-size: 10.5px; color: var(--dimmer); letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-icon { background: transparent; border: 0; color: var(--dim); font-size: 15px; padding: 2px 6px; }
+.ag-icon:hover { color: var(--accent); }
+.ag-settings { flex: none; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--panel-2); }
+.ag-settings label { display: block; font-size: 10.5px; letter-spacing: .1em; color: var(--dim); margin: 8px 0 5px; }
+.ag-settings label:first-child { margin-top: 0; }
+.ag-row { display: flex; gap: 6px; }
+.ag-row input, .ag-row select {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 9px;
+  outline: none;
+}
+.ag-row button {
+  background: #fff;
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.ag-row button:hover { border-color: var(--accent); color: var(--accent); }
+.ag-hint { font-family: var(--sans); font-size: 11px; color: var(--dim); line-height: 1.6; margin-top: 9px; }
+.ag-msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+.ag-msg {
+  max-width: 86%;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 9px 13px;
+  border-radius: 13px;
+  white-space: normal;
+  word-break: break-word;
+}
+.ag-user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.ag-agent { align-self: flex-start; background: #fff; border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
+.ag-tool {
+  align-self: flex-start;
+  font-size: 10.5px;
+  color: var(--dim);
+  letter-spacing: .06em;
+  background: var(--panel-2);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.ag-typing { flex: none; padding: 4px 16px 8px; font-family: var(--sans); font-size: 11.5px; color: var(--dim); }
+.ag-typing span { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); margin-right: 3px; animation: agdot 1.2s infinite; }
+.ag-typing span:nth-child(2) { animation-delay: .2s; }
+.ag-typing span:nth-child(3) { animation-delay: .4s; }
+@keyframes agdot { 0%, 60%, 100% { opacity: .25 } 30% { opacity: 1 } }
+.ag-inputrow { flex: none; display: flex; gap: 8px; padding: 11px 12px; border-top: 1px solid var(--border); background: #fff; }
+.ag-inputrow textarea {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 9px 12px;
+  outline: none;
+  max-height: 110px;
+  background: var(--panel);
+  color: var(--text-bright);
+}
+.ag-inputrow textarea:focus { border-color: var(--accent); }
+.ag-inputrow button {
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 0 16px;
+}
+.ag-inputrow button:disabled { opacity: .5; }
+
 /* ═══════════ 窄螢幕 ═══════════ */
 @media (max-width: 1280px) {
   body { overflow: auto; }
