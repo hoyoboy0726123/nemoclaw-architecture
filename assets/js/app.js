@@ -698,8 +698,33 @@
       if (p.def.outage) {
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
-        b.textContent = '🔌 模擬市電停電／復電';
-        b.addEventListener('click', () => { CF.Ind.toggleOutage(); updateIndSimUi(); });
+        b.textContent = p.def.hvsrc ? '🔌 台電高壓停電／復電' : '🔌 模擬市電停電／復電';
+        b.addEventListener('click', () => { CF.Ind.toggleOutage(p.uid); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
+      if (p.def.dsw || p.def.loadbreak || p.def.breaker) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `🔧 ${p.label} 分／合`;
+        b.addEventListener('click', () => {
+          const r = CF.Ind.operateSwitch(p.uid);
+          if (!r.ok) window.alert(r.error);
+          updateIndSimUi();
+        });
+        ops.appendChild(b);
+        if (p.def.breaker) {
+          const rb = document.createElement('button');
+          rb.className = 'sim-ev'; rb.type = 'button';
+          rb.textContent = `↺ ${p.label} 復歸`;
+          rb.addEventListener('click', () => { CF.Ind.resetProtection(p.uid); updateIndSimUi(); });
+          ops.appendChild(rb);
+        }
+      }
+      if (p.def.fusehv) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = `🔩 ${p.label} 更換熔絲`;
+        b.addEventListener('click', () => { CF.Ind.resetProtection(p.uid); updateIndSimUi(); });
         ops.appendChild(b);
       }
     }
@@ -794,6 +819,11 @@
       if (p.def.gen) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.running ? 'on' : ''}">${p.running ? '發電中 ⚙' : (p.startAt ? '起動中⋯' : '待機')}</div></div>`);
       if (p.def.ats) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.pos ? 'on' : ''}">${p.pos === 'N' ? '常用 N' : p.pos === 'E' ? '備用 E' : '開路'}</div></div>`);
       if (p.def.capbank) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.scEn ? 'on' : ''}">${p.scEn ? 'PF 0.98 ✦' : '切離'}</div></div>`);
+      if (p.def.hvsrc && p.outage) chips.push(`<div class="sim-out"><div class="k">台電11.4kV</div><div class="sim-chipval" style="color:var(--amber)">停電 ✕</div></div>`);
+      if (p.def.dsw || p.def.loadbreak || p.def.breaker) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.fault ? '' : (p.on && !p.tripped) ? 'on' : ''}" ${p.fault || p.tripped ? 'style="color:var(--amber)"' : ''}>${p.fault ? '弧光 ⚡' : p.tripped ? 'TRIP ⚡' : p.on ? '合 ●' : '分 ○'}</div></div>`);
+      if (p.def.fusehv && p.tripped) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">熔斷 💥</div></div>`);
+      if (p.def.hvtr) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${running && p.fault === undefined ? '' : ''}">${p.paramVal}kVA</div></div>`);
+      if (p.id === 'ry' && p.ryOn) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">51 動作中</div></div>`);
     }
     refs.status.innerHTML = chips.join('') || '<div class="sim-note">尚無器件。</div>';
     refs.log.innerHTML = CF.Ind.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
@@ -920,6 +950,7 @@
     const IND_TIERS = [
       ['basic', '基礎工配（丙級）', false],
       ['adv', '進階／電力配電（乙級・受電盤）', true],
+      ['hv', '高壓受電（11.4kV 受電盤）', true],
       ['plc', 'PLC 可程式控制', true]
     ];
     for (const [tier, title, collapsed] of IND_TIERS) {
