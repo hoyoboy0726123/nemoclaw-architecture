@@ -476,7 +476,17 @@
         <button type="button" class="ag-icon" data-close title="關閉">✕</button>
       </div>
       <div class="ag-settings" data-settings hidden>
-        <label>Google API Key（僅存於瀏覽器 localStorage）</label>
+        <label>Google API Key（僅存於瀏覽器 localStorage）
+          <button type="button" class="ag-howto" data-howto>？還沒有金鑰</button>
+        </label>
+        <div class="ag-howto-box" data-howtobox hidden>
+          <b>免費申請（約 1 分鐘，不用綁卡）：</b>
+          <ol>
+            <li>用 Google 帳號登入 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></li>
+            <li>按「<b>Create API key</b>」建立金鑰</li>
+            <li>複製 <code>AIza</code> 開頭的金鑰，貼到下面按「儲存」即可</li>
+          </ol>
+        </div>
         <div class="ag-row">
           <input type="password" data-key placeholder="AIza...">
           <button type="button" data-savekey>儲存</button>
@@ -527,6 +537,10 @@
     });
     panel.querySelector('[data-close]').addEventListener('click', () => { st.open = false; panel.hidden = true; });
     panel.querySelector('[data-gear]').addEventListener('click', () => toggleSettings());
+    panel.querySelector('[data-howto]').addEventListener('click', () => {
+      const box = panel.querySelector('[data-howtobox]');
+      box.hidden = !box.hidden;
+    });
     panel.querySelector('[data-savekey]').addEventListener('click', () => {
       const v = st.els.keyInput.value.trim();
       if (v) { localStorage.setItem(LS_KEY, v); toggleSettings(false); note('金鑰已儲存，助手已啟用。'); refreshModels(); }

@@ -24,7 +24,8 @@ CF.Editor = (function () {
     drag: null,         // {uid, offC}
     sel: null,          // {type:'part'|'wire', uid}
     plan: null,
-    uidSeq: 1
+    uidSeq: 1,
+    vz: 1, vx: 0, vy: 0, panDrag: null   // 縮放／平移
   };
 
   /* ---------------- 幾何 ---------------- */
@@ -393,8 +394,9 @@ CF.Editor = (function () {
     const { ctx } = st;
     if (!ctx) return;
     const g = geo();
-    ctx.setTransform(st.dpr, 0, 0, st.dpr, 0, 0);
-    ctx.clearRect(0, 0, st.w, st.h);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, st.canvas.width, st.canvas.height);
+    ctx.setTransform(st.dpr * st.vz, 0, 0, st.dpr * st.vz, st.dpr * st.vx, st.dpr * st.vy);
 
     // 麵包板底
     const bx0 = g.colX(0) - g.step * 1.4, bx1 = g.colX(COLS - 1) + g.step * 1.4;
@@ -682,10 +684,34 @@ CF.Editor = (function () {
 
   function localXY(e) {
     const rect = st.canvas.getBoundingClientRect();
-    return [e.clientX - rect.left, e.clientY - rect.top];
+    return [(e.clientX - rect.left - st.vx) / st.vz, (e.clientY - rect.top - st.vy) / st.vz];
+  }
+
+  /* 縮放／平移 */
+  function resetView() { st.vz = 1; st.vx = 0; st.vy = 0; render(); }
+  function onWheel(e) {
+    e.preventDefault();
+    const rect = st.canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const lx = (cx - st.vx) / st.vz, ly = (cy - st.vy) / st.vz;
+    st.vz = Math.min(4, Math.max(0.5, st.vz * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    st.vx = cx - lx * st.vz;
+    st.vy = cy - ly * st.vz;
+    render();
   }
 
   function onMove(e) {
+    if (st.panDrag) {
+      const dx = e.clientX - st.panDrag.x, dy = e.clientY - st.panDrag.y;
+      if (st.panDrag.on || Math.hypot(dx, dy) > 4) {
+        st.panDrag.on = true;
+        st.vx += e.clientX - st.panDrag.x;
+        st.vy += e.clientY - st.panDrag.y;
+        st.panDrag.x = e.clientX; st.panDrag.y = e.clientY;
+        render();
+        return;
+      }
+    }
     const [x, y] = localXY(e);
     st.hover = pickHole(x, y);
     if (st.placing) {
@@ -721,7 +747,7 @@ CF.Editor = (function () {
     }
     if (st.tool === 'wire') {
       const h = pickHole(x, y);
-      if (!h) { st.wireStart = null; render(); return; }
+      if (!h) { st.wireStart = null; st.panDrag = { x: e.clientX, y: e.clientY }; render(); return; }
       if (!st.wireStart) { st.wireStart = h; render(); return; }
       if (st.wireStart.c !== h.c || st.wireStart.r !== h.r) {
         addWire(st.wireStart, h);
@@ -735,6 +761,7 @@ CF.Editor = (function () {
       if (p) { st.parts = st.parts.filter(q => q.uid !== p.uid); changed(); return; }
       const w = pickWire(x, y);
       if (w) { st.wires = st.wires.filter(q => q.uid !== w.uid); changed(); return; }
+      st.panDrag = { x: e.clientX, y: e.clientY };
       return;
     }
     // select
@@ -743,9 +770,11 @@ CF.Editor = (function () {
     const w = pickWire(x, y);
     if (w) { st.sel = { type: 'wire', uid: w.uid }; render(); return; }
     st.sel = null;
+    st.panDrag = { x: e.clientX, y: e.clientY };
     render();
   }
   function onUp() {
+    st.panDrag = null;
     if (st.drag) {
       const moved = st.drag.moved;
       st.drag = null;
@@ -773,8 +802,8 @@ CF.Editor = (function () {
     input.className = 'pval-input';
     input.value = ep.value || def.defaultValue || '';
     input.maxLength = 12;
-    input.style.left = Math.max(4, b.x0) + 'px';
-    input.style.top = Math.max(4, b.y0 - 30) + 'px';
+    input.style.left = Math.max(4, b.x0 * st.vz + st.vx) + 'px';
+    input.style.top = Math.max(4, b.y0 * st.vz + st.vy - 30) + 'px';
     st.canvas.parentElement.appendChild(input);
     input.focus();
     input.select();
@@ -928,7 +957,8 @@ CF.Editor = (function () {
         // 點兩下被動元件：開關切換 ON/OFF，其餘開啟規格值輸入框
         const [x, y] = localXY(e);
         const p = pickPart(x, y);
-        if (!p || CF.PARTS[p.id].cls !== 'PASSIVE') return;
+        if (!p) { resetView(); return; }   // 雙擊空白處：重置縮放平移
+        if (CF.PARTS[p.id].cls !== 'PASSIVE') return;
         if (CF.PARTS[p.id].conduct === 'switch') {
           p.closed = p.closed === false ? true : false;
           changed();
@@ -936,7 +966,9 @@ CF.Editor = (function () {
         }
         openValueEditor(p);
       });
-      canvas.addEventListener('pointerleave', () => { st.hover = null; render(); });
+      canvas.addEventListener('pointercancel', onUp);
+      canvas.addEventListener('wheel', onWheel, { passive: false });
+      canvas.addEventListener('pointerleave', () => { st.hover = null; st.panDrag = null; render(); });
       window.addEventListener('keydown', onKey);
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
       resize();
@@ -956,6 +988,7 @@ CF.Editor = (function () {
       const b = ep._bbox;
       return { x: b.x0 + b.w / 2, y: b.y0 + b.h / 2 };
     },
+    viewInfo() { return { vz: st.vz, vx: st.vx, vy: st.vy }; },
     resize
   };
 })();

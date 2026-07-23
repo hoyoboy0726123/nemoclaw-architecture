@@ -710,6 +710,38 @@
       host.appendChild(n);
     }
 
+    // 參數整定（可調參數的元件都列出來，改了即時生效；畫布上雙擊元件也可以改）
+    const paramParts = CF.Ind.getParts().filter(p => p.def.param);
+    if (paramParts.length) {
+      const pSec = document.createElement('div');
+      pSec.className = 'sim-sec';
+      pSec.textContent = 'SETTINGS / 參數整定（即時生效）';
+      host.appendChild(pSec);
+      const pBox = document.createElement('div');
+      pBox.className = 'ind-params';
+      for (const p of paramParts) {
+        const pr = p.def.param;
+        const row = document.createElement('label');
+        row.className = 'ind-param-row';
+        row.innerHTML = `<span class="ipr-name">${p.label}<em>${pr.name}</em></span>
+          <input type="number" value="${p.paramVal}" min="${pr.min}" max="${pr.max}" step="${pr.min < 1 ? 0.1 : 0.5}">
+          <span class="ipr-unit">${pr.unit}</span>`;
+        const inp = row.querySelector('input');
+        inp.addEventListener('change', () => {
+          const r = CF.Ind.setParam(p.uid, inp.value);
+          if (!r.ok) { inp.value = p.paramVal; inp.title = r.error; }
+          else inp.value = r.value;
+          updateIndSimUi();
+        });
+        pBox.appendChild(row);
+      }
+      host.appendChild(pBox);
+      const note = document.createElement('div');
+      note.className = 'sim-note';
+      note.textContent = '例：把馬達運轉電流調到超過 TH-RY／CO 的整定值，保護電驛會真的跳脫。';
+      host.appendChild(note);
+    }
+
     const stSec = document.createElement('div');
     stSec.className = 'sim-sec';
     stSec.textContent = 'STATUS / 器件狀態';

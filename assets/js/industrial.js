@@ -324,7 +324,9 @@ CF.Ind = (function () {
     running: false, timer: null, coilPrev: {}, live: null, motorAngle: 0,
     plan: null, uidSeq: 1, log: [],
     timerDone: {},   // TR 計時到達 {uid:bool}
-    plcOut: {}       // PLC 輸出 {uid:{Y0:bool,...}}
+    plcOut: {},      // PLC 輸出 {uid:{Y0:bool,...}}
+    zoom: 1, panX: 0, panY: 0, baseScale: 1, baseOx: 0, baseOy: 0,   // 縮放／平移
+    panDrag: null
   };
 
   function defOf(p) { return DEFS[p.id]; }
@@ -909,8 +911,9 @@ CF.Ind = (function () {
   function render() {
     const { ctx } = st;
     if (!ctx) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, st.canvas.width, st.canvas.height);
     ctx.setTransform(st.dpr * st.scale, 0, 0, st.dpr * st.scale, st.dpr * st.ox, st.dpr * st.oy);
-    ctx.clearRect(-st.ox / st.scale, -st.oy / st.scale, LW + 2 * st.ox / st.scale, LH + 2 * st.oy / st.scale);
 
     // 盤面
     ctx.fillStyle = '#e8eaec';
@@ -1278,12 +1281,47 @@ CF.Ind = (function () {
     return null;
   }
 
+  /* 縮放／平移 */
+  function applyView() {
+    st.scale = st.baseScale * st.zoom;
+    st.ox = st.baseOx + st.panX;
+    st.oy = st.baseOy + st.panY;
+    render();
+  }
+  function resetView() {
+    st.zoom = 1; st.panX = 0; st.panY = 0;
+    applyView();
+  }
+  function onWheel(e) {
+    e.preventDefault();
+    const rect = st.canvas.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const lx = (cx - st.ox) / st.scale, ly = (cy - st.oy) / st.scale;
+    const z2 = Math.min(4, Math.max(0.5, st.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+    st.zoom = z2;
+    st.scale = st.baseScale * st.zoom;
+    st.panX = cx - lx * st.scale - st.baseOx;
+    st.panY = cy - ly * st.scale - st.baseOy;
+    applyView();
+  }
   function onMove(e) {
+    if (st.panDrag) {
+      const dx = e.clientX - st.panDrag.x, dy = e.clientY - st.panDrag.y;
+      if (st.panDrag.on || Math.hypot(dx, dy) > 4) {
+        st.panDrag.on = true;
+        st.panX += e.clientX - st.panDrag.x;
+        st.panY += e.clientY - st.panDrag.y;
+        st.panDrag.x = e.clientX; st.panDrag.y = e.clientY;
+        applyView();
+        return;
+      }
+    }
     const [x, y] = toLogical(e);
     st.hover = pickTerm(x, y);
     if (st.hover) { st.hover.x = x; st.hover.y = y; }
     render();
   }
+  function onUp() { st.panDrag = null; }
   function onDown(e) {
     const [x, y] = toLogical(e);
     if (st.tool === 'delete') {
@@ -1295,6 +1333,7 @@ CF.Ind = (function () {
         st.wires = st.wires.filter(q => q.a.uid !== p.uid && q.b.uid !== p.uid);
         changed();
       }
+      st.panDrag = { x: e.clientX, y: e.clientY };
       return;
     }
     // 拉線
@@ -1309,12 +1348,13 @@ CF.Ind = (function () {
       return;
     }
     st.wireStart = null;
+    st.panDrag = { x: e.clientX, y: e.clientY };   // 空白處拖曳＝平移
     render();
   }
   function onDbl(e) {
     const [x, y] = toLogical(e);
     const p = pickPart(x, y);
-    if (!p) return;
+    if (!p) { resetView(); return; }   // 雙擊空白處：重置縮放平移
     const d = defOf(p);
     if (d.toggle || d.selector) {
       p.on = !p.on;
@@ -1957,10 +1997,10 @@ CF.Ind = (function () {
     st.canvas.height = st.h * st.dpr;
     st.canvas.style.width = st.w + 'px';
     st.canvas.style.height = st.h + 'px';
-    st.scale = Math.min(st.w / LW, st.h / LH);
-    st.ox = (st.w - LW * st.scale) / 2;
-    st.oy = (st.h - LH * st.scale) / 2;
-    render();
+    st.baseScale = Math.min(st.w / LW, st.h / LH);
+    st.baseOx = (st.w - LW * st.baseScale) / 2;
+    st.baseOy = (st.h - LH * st.baseScale) / 2;
+    applyView();
   }
 
   /* ================= 對外 ================= */
@@ -1974,8 +2014,11 @@ CF.Ind = (function () {
       st.onLadder = hooks && hooks.onLadder;
       canvas.addEventListener('pointermove', onMove);
       canvas.addEventListener('pointerdown', onDown);
+      canvas.addEventListener('pointerup', onUp);
+      canvas.addEventListener('pointercancel', onUp);
       canvas.addEventListener('dblclick', onDbl);
-      canvas.addEventListener('pointerleave', () => { st.hover = null; render(); });
+      canvas.addEventListener('wheel', onWheel, { passive: false });
+      canvas.addEventListener('pointerleave', () => { st.hover = null; st.panDrag = null; render(); });
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
       resize();
       ensureSource();
@@ -2010,6 +2053,12 @@ CF.Ind = (function () {
     },
     setParam(uid, value) { return setParam(uid, value); },
     toggleOutage,
+    viewInfo() { return { scale: st.scale, ox: st.ox, oy: st.oy, zoom: st.zoom }; },
+    termScreenXY(uid, term) {
+      const p = byUid(uid);
+      const t = p && termPos(p, term);
+      return t ? { x: t.x * st.scale + st.ox, y: t.y * st.scale + st.oy } : null;
+    },
     /* Agent 用：以「標籤:端子」找端子（模糊容錯＋錯誤時列出可用值） */
     resolveRef(s) {
       const m = String(s || '').trim().match(/^(.+?)[\s:.\-–—]+([A-Za-z0-9]+)$/);
