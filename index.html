@@ -127,6 +127,7 @@
         <button id="indToolDelete" class="edit-tool" type="button">刪除</button>
         <span class="edit-sep"></span>
         <button id="indExample" class="edit-act" type="button">載入自保持範例</button>
+        <button id="indLadderBtn" class="edit-act" type="button">梯形圖</button>
         <button id="indClear" class="edit-act" type="button">清空</button>
         <span id="indErc" class="erc-badge erc-ok">ERC ✓</span>
       </div>
@@ -259,6 +260,15 @@
       </ol>
       <p class="help-dim">整套測試也可以叫助手代勞：「通電測試看看」「把溫度調到 35」「模擬有人經過」——它會回報結果，接錯時會告訴你 ERC 卡在哪。</p>
 
+      <h4>工業配線模式（配電盤＋PLC）</h4>
+      <ol>
+        <li><b>載入範例或自己配</b>：左欄有 10 個經典迴路（自保持、寸動、正逆轉互鎖、Y-Δ 降壓啟動、過載警報、PLC 自保持⋯）一鍵載入；也可以從元件盤放 NFB／MC／TR／TH-RY／按鈕自己拉線。銀色端子＝三相主迴路、橘色＝110V 控制迴路，兩邊不可混接。</li>
+        <li><b>看 ERC</b>：缺自保持不算錯，但相間短路、缺互鎖、馬達缺相會直接擋下——正逆轉與 Y-Δ 的兩顆 MC 線圈一定要互串對方的 21-22 b 接點。</li>
+        <li><b>通電操作</b>：右欄「模擬」按「通電 ▶」，按住 START／放開、按 STOP、雙擊 NFB 或 COS、按「⚡ 過載跳脫」看 TH-RY 動作（警報範例會真的響蜂鳴器）。TR 限時電驛雙擊可改秒數，Y-Δ 範例通電後看得到 Y→Δ 自動切換。</li>
+        <li><b>PLC</b>：雙擊盤上的 PLC（或工具列「梯形圖」）開編輯器——點格子放常開／常閉接點、同一欄上下疊＝並聯、最右邊是線圈（OUT／TON 計時／CTU 計數）。通電時導通的接點會亮綠色。接線規則：C1→L、C2→N 供電；COM→按鈕→X 輸入；C1→C0、Y→MC 線圈輸出。</li>
+        <li><b>匯出</b>：接線表、元件表、迴路圖 SVG，有 PLC 時再加 IEC 61131-3 程式（program.st）與 IO 對照表。</li>
+      </ol>
+
       <h4>讓 AI 助手幫你做（右下角 <span class="help-claw">🐾</span> 按鈕）</h4>
       <p>第一次使用：點對話框右上 ⚙，貼上 Google API Key（<b>aistudio.google.com</b> 免費申請，金鑰只存在你的瀏覽器）。</p>
       <p>一句話描述的公式：<b>「元件／感測什麼 ＋ 條件 ＋ 動作／怎麼回報」</b>，例如：</p>
@@ -269,6 +279,7 @@
       </ul>
       <p>不用寫板子型號也可以，助手會自己選。做完之後你隨時可以繼續下指令：「PIR 改接 GPIO 15」「加一顆 LED」「通電測試看看」「匯出專案」；也可以純提問（「I2C 是什麼？」「為什麼 ERC 報錯？」），助手解釋完會問你要不要直接幫你改。</p>
       <p class="help-dim">邊做邊問也行：在自由編輯模式中求助時，助手會用小步驟幫你加元件、接線，不會蓋掉你已經接好的作品。需求超出元件庫（GPS、藍牙等）時，助手會直接告訴你目前無法實現。</p>
+      <p class="help-dim">工業模式也能叫助手：「載入 Y-Δ 範例然後通電測試」「幫我把 MC1 的 13 接到 START 的 3」「寫一個 X0 啟動、X1 停止、延時 5 秒才輸出 Y0 的梯形圖」。</p>
     </div>
   </div>
 </div>
@@ -284,6 +295,7 @@
 <script src="assets/js/codegen.js"></script>
 <script src="assets/js/board3d.js"></script>
 <script src="assets/js/editor.js"></script>
+<script src="assets/js/plc.js"></script>
 <script src="assets/js/industrial.js"></script>
 <script src="assets/js/sim.js"></script>
 <script src="assets/js/zip.js"></script>

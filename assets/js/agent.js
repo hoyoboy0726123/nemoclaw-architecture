@@ -147,15 +147,107 @@
       description: '把目前方案匯出成 PlatformIO 專案 ZIP 下載給使用者。',
       parameters: { type: 'object', properties: {} },
       run: () => CF.App.exportProject()
+    },
+    {
+      name: 'ind_load_preset',
+      description: '在工業配線模式載入經典迴路範例（會覆蓋盤面）。可用 id：selfhold 自保持、jog 寸動、twolamp 指示燈、twoplace 兩處控制、fwdrev 正逆轉互鎖、seq 順序啟動、ydelta Y-Δ 降壓啟動、alarm 過載警報、plc_selfhold PLC 自保持、plc_timer PLC 延時啟動。',
+      parameters: { type: 'object', properties: { preset_id: { type: 'string', enum: ['selfhold', 'jog', 'twolamp', 'twoplace', 'fwdrev', 'seq', 'ydelta', 'alarm', 'plc_selfhold', 'plc_timer'] } }, required: ['preset_id'] },
+      run: a => { CF.App.setMode('ind'); return CF.Ind.loadPreset(a.preset_id); }
+    },
+    {
+      name: 'ind_add_part',
+      description: '在配電盤加入一個工業元件。part_id：nfb、mc、tr（限時電驛）、mk（電力電驛）、thry、pb_nc（STOP）、pb_no（START）、cos（選擇開關）、pl_g（綠燈）、pl_r（紅燈）、bz（蜂鳴器）、motor、motor6（Y-Δ 六出線馬達）、plc。加入後用 ind_wire 接線。',
+      parameters: { type: 'object', properties: { part_id: { type: 'string' } }, required: ['part_id'] },
+      run: a => {
+        CF.App.setMode('ind');
+        const id = String(a.part_id || '').toLowerCase().trim();
+        const r = CF.Ind.addPart(id);
+        if (!r.ok && !CF.Ind.DEFS[id]) return { ok: false, error: `未知元件「${a.part_id}」。可用：${Object.keys(CF.Ind.DEFS).filter(k => k !== 'source').join('、')}` };
+        return r;
+      }
+    },
+    {
+      name: 'ind_wire',
+      description: '在配電盤兩個端子之間接線（或拆線）。端子寫法「元件標籤:端子」，例如 POWER:C1、NFB:1、MC1:13、START:4、TH-RY:95、M 3~:U、PLC:X0。接完會回傳 ERC 錯誤清單，有錯必須修正。',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: '起點，如 MC1:A1' },
+          to: { type: 'string', description: '終點，如 TH-RY:95' },
+          remove: { type: 'boolean', description: 'true＝拆掉這條線，預設 false＝接線' }
+        },
+        required: ['from', 'to']
+      },
+      run: a => { CF.App.setMode('ind'); return a.remove ? CF.Ind.agentUnwire(a.from, a.to) : CF.Ind.agentWire(a.from, a.to); }
+    },
+    {
+      name: 'ind_control',
+      description: '操作配電盤模擬：start 通電（ERC 有錯會失敗）、stop 斷電、press 按一下按鈕（按下再放開）、toggle_nfb 切 NFB、toggle_cos 切選擇開關、trip 令 TH-RY 過載跳脫／復歸、set_timer 改 TR 秒數。target 用元件標籤（如 START1、NFB、COS）。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['start', 'stop', 'press', 'toggle_nfb', 'toggle_cos', 'trip', 'set_timer'] },
+          target: { type: 'string', description: '元件標籤，press/trip/set_timer 等需要' },
+          seconds: { type: 'number', description: 'set_timer 用，1–60' }
+        },
+        required: ['action']
+      },
+      run: async a => {
+        CF.App.setMode('ind');
+        const find = lbl => CF.Ind.getParts().find(p => p.label.toLowerCase() === String(lbl || '').toLowerCase().trim());
+        if (a.action === 'start') return CF.Ind.simStart();
+        if (a.action === 'stop') { CF.Ind.simStop(); return { ok: true }; }
+        if (a.action === 'press') {
+          const p = find(a.target);
+          if (!p || !p.def.momentary) return { ok: false, error: `找不到按鈕「${a.target}」。可按：${CF.Ind.getParts().filter(x => x.def.momentary).map(x => x.label).join('、') || '無'}` };
+          CF.Ind.pressPB(p.uid, true);
+          await new Promise(r => setTimeout(r, 400));
+          CF.Ind.pressPB(p.uid, false);
+          await new Promise(r => setTimeout(r, 300));
+          return { ok: true, pressed: p.label, status_after: CF.Ind.agentStatus() };
+        }
+        if (a.action === 'toggle_nfb') { CF.Ind.toggleNfb(find(a.target) && find(a.target).uid); return { ok: true }; }
+        if (a.action === 'toggle_cos') return CF.Ind.toggleCos(find(a.target) && find(a.target).uid);
+        if (a.action === 'trip') { CF.Ind.tripThry(find(a.target) && find(a.target).uid); return { ok: true }; }
+        if (a.action === 'set_timer') return CF.Ind.setTrPreset(find(a.target) && find(a.target).uid, a.seconds);
+        return { ok: false, error: '未知動作' };
+      }
+    },
+    {
+      name: 'ind_status',
+      description: '取得配電盤現況：每個元件的標籤／端子／狀態、接線數、ERC 結果、事件紀錄。工業模式下回答問題或接線前先呼叫。',
+      parameters: { type: 'object', properties: {} },
+      run: () => CF.Ind.agentStatus()
+    },
+    {
+      name: 'plc_program',
+      description: '讀取或寫入 PLC 梯形圖程式。action=get 讀取；action=set 需附 program_json（JSON 字串）。格式：{"rungs":[{"cols":[[{"t":"no","addr":"X0"},{"t":"no","addr":"Y0"}],[{"t":"nc","addr":"X1"},null]],"coil":{"t":"out","addr":"Y0"}}]}——cols 每欄最多疊 2 個接點（疊＝並聯 OR），欄與欄串聯 AND；t：no 常開／nc 常閉；coil.t：out（Y/M）、ton（T，preset 秒）、ctu（C，preset 次）、rst。寫入後用 ind_control start＋press 測試。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['get', 'set'] },
+          program_json: { type: 'string', description: 'action=set 時必填，梯形圖 JSON 字串' }
+        },
+        required: ['action']
+      },
+      run: a => {
+        if (!CF.Plc) return { ok: false, error: 'PLC 引擎未載入' };
+        if (a.action === 'get') return { program: CF.Plc.getProgram(), runtime: CF.Plc.getRuntime() };
+        let p;
+        try { p = JSON.parse(a.program_json); } catch (e) { return { ok: false, error: 'program_json 不是合法 JSON：' + e.message }; }
+        const r = CF.Plc.setProgram(p);
+        if (r.ok && !CF.Ind.getParts().some(x => x.def.plc)) r.note = '注意：盤面還沒有 PLC 元件，請先 ind_add_part plc 並接好 L/N/COM/X/Y。';
+        return r;
+      }
     }
   ];
 
   const DECLS = TOOLS.map(t => ({ name: t.name, description: t.description, parameters: t.parameters }));
 
-  function runTool(name, args) {
+  async function runTool(name, args) {
     const t = TOOLS.find(x => x.name === name);
     if (!t) return { error: `未知工具 ${name}` };
-    try { return t.run(args || {}) ?? { ok: true }; }
+    try { return (await t.run(args || {})) ?? { ok: true }; }
     catch (e) { return { error: String(e.message || e) }; }
   }
 
@@ -176,7 +268,11 @@
       'esp32cam（AI Thinker）：相機占走大部分內部腳位，可自由使用的只有 GPIO 13/14/15（GPIO 4 是板載閃光燈）——最多再接一兩個簡單元件（如 PIR）；5V 供電；適合影像類應用（拍照、串流、Teachable Machine）。',
       'nano（Arduino Nano）：無 WiFi，凡是要 MQTT/HTTP/連網的需求一律建議改用 esp32；5V 邏輯；I2C 固定 A4(SDA)/A5(SCL)；類比 A0–A7（0–1023）；適合離線的顯示、警報、伺服小專案。',
       '',
-      '【工業配線模式（ind）】配電盤教學：NFB、MC 電磁接觸器、TH-RY 積熱電驛、STOP/START 按鈕、指示燈、三相馬達；可模擬自保持啟動迴路。你目前只能用 switch_mode 切換與 get_state 檢視此模式（配線工具下一批提供），操作請引導使用者用畫面上的元件盤與「載入自保持範例」。',
+      '【工業配線模式（ind）】台灣工配（丙級／乙級）教學：雙電壓域＝三相主迴路（R/S/T）＋110V 控制迴路（C1/C2），兩域不可混接。',
+      '元件與端子：POWER（R/S/T/C1/C2）、NFB（1-2/3-4/5-6，雙擊開關）、MC 電磁接觸器（主 1-2/3-4/5-6；線圈 A1-A2；輔助 a 13-14、b 21-22）、TR 限時電驛（線圈 A1-A2；延時 b 55-56、延時 a 67-68；預設 3 秒）、MK 電力電驛（A1-A2；a 13-14/23-24；b 21-22）、TH-RY（主串接；b 95-96 串線圈迴路；a 97-98 跳脫時閉合接警報）、STOP＝pb_nc（1-2 常閉）、START＝pb_no（3-4 常開）、COS（A 位 1-2／B 位 3-4）、GL/RL 指示燈與 BZ 蜂鳴器（X1/X2）、motor（U/V/W）、motor6（U1V1W1＋U2V2W2，Y-Δ 用）、PLC（L/N 電源、COM→按鈕→X0-X7 輸入、C0＋Y0-Y7 繼電器輸出）。',
+      '接線鐵則：控制迴路從 C1 出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖），否則相間短路。工具：ind_load_preset 載入 10 個經典範例、ind_add_part／ind_wire 自由配線（端子寫法「標籤:端子」如 MC1:13）、ind_control 通電與操作、ind_status 看現況。接線後 ERC 有 error 必須修到通過才能通電。',
+      '',
+      '【PLC】梯形圖模型：每階＝欄串聯（AND），每欄可疊 2 個接點（並聯 OR），線圈在最右。位址：X0-X7 輸入、Y0-Y7 輸出、M0-M7 內部繼電器、T0-T3 TON 計時器（秒）、C0-C3 CTU 計數器。自保持範式：(X0 OR Y0) AND X1 → OUT Y0（STOP 實體接 b 接點、程式用常開 X1）。用 plc_program 讀寫程式；盤面要有 plc 元件且 L/N 接 C1/C2 才會執行；輸出 Y 得電＝Y 端子與 C0 導通。匯出檔含 IEC 61131-3 ST（program.st）與 IO 對照表。',
       '',
       '【電路常識】LED 必須串 220Ω 限流電阻；LDR/NTC 要與定值電阻分壓後接類比腳；電解電容「＋」接高電位、二極體 K 朝電源側做反接保護；模組電源腳旁可加 100nF 陶瓷電容去耦；水泵/大電流負載要經繼電器或 MOSFET，不可由 GPIO 直接驅動。不確定某元件細節時先呼叫 get_part_info。',
       '',
@@ -253,7 +349,7 @@
           const responses = [];
           for (const fc of r.functionCalls) {
             addToolChip(fc.name);
-            const result = runTool(fc.name, fc.args);
+            const result = await runTool(fc.name, fc.args);
             responses.push({ functionResponse: { name: fc.name, response: { result } } });
           }
           st.history.push({ role: 'user', parts: responses });

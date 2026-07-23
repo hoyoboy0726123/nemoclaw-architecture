@@ -18,6 +18,17 @@
 2. **自由編輯**：2D 麵包板上拖放元件、逐孔拉線。底層是真實的麵包板連通模型（同一直排 5 孔導通、電源軌整條導通），ERC 即時檢查：短路、未供電、未接地、訊號腳懸空、GPIO 衝突、I2C 匯流排分裂、strapping pin……接對就通，接錯就報錯。
 3. **行為模擬（通電）**：通電前先跑 ERC，接錯不給電。通電後以「生成韌體的行為語意」驅動：拉桿調感測值 → OLED 即時顯示、高溫觸發蜂鳴器（真的出聲）、PIR 觸發 LED 與事件、虛擬 MQTT broker 收發 telemetry 與指令。
 
+## 工業配線模式（配電盤＋PLC）
+
+台灣工配（丙級／乙級）教學情境：三相主迴路（R/S/T）＋110V 控制迴路雙電壓域、DIN 軌端子接線。
+
+- **元件庫 14 種**：NFB、MC 電磁接觸器、TR 限時電驛（通電延時）、MK 電力電驛、TH-RY 積熱電驛（95-96 b／97-98 a 警報接點）、STOP/START 按鈕、COS 選擇開關、GL/RL 指示燈、BZ 蜂鳴器（會出聲）、三相馬達、六出線 Y-Δ 馬達、小型 PLC（8 DI／8 DO）
+- **受控接點求解器**：線圈得電→接點動作的定點迭代（120ms 掃描），真自保持／互鎖／震盪偵測
+- **ERC**：電壓域混接、相間短路、馬達缺相／相別重複、保護串接、**電氣互鎖**（以「同時投入是否短路」判定正逆轉與 Y-Δ 的 MC 配對）
+- **10 個經典迴路範例**：自保持、寸動、指示燈、兩處控制、正逆轉互鎖、順序啟動、Y-Δ 降壓啟動（TR 計時自動切換）、過載警報、PLC 自保持、PLC 延時啟動
+- **PLC 梯形圖編輯器**：常開／常閉接點、欄疊＝並聯、OUT／TON／CTU／RST 線圈，通電路徑即時亮線；掃描週期與配電盤求解器串接（Y 輸出驅動 MC 線圈）
+- **匯出**：接線表、元件表（BOM）、迴路圖 SVG、IEC 61131-3 結構化文字（program.st）、PLC IO 對照表
+
 ## 其他功能
 
 - **CODE**：`main.cpp`（MQTT／HTTP REST／Web Server／ESP32-CAM 串流＋Teachable Machine）、`platformio.ini`、`config.h`、`circuit.json`
@@ -36,6 +47,8 @@ assets/js/engine.js   需求解析、腳位指派、網表、規則檢查
 assets/js/codegen.js  韌體與設定檔產生器
 assets/js/board3d.js  3D 麵包板渲染器（Canvas）
 assets/js/editor.js   2D 自由編輯器：連通圖（union-find）＋ ERC
+assets/js/industrial.js 工業配線模式：配電盤畫布＋受控接點求解器＋工配 ERC＋範例庫
+assets/js/plc.js      PLC 梯形圖引擎＋編輯器＋IEC 61131-3 ST 匯出
 assets/js/sim.js      行為模擬器（規則與生成韌體語意一一對應）
 assets/js/zip.js      極簡 ZIP 打包器
 assets/js/app.js      UI 主控
