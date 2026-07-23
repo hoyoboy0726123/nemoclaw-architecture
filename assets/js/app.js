@@ -821,12 +821,33 @@
       }
       if (action === 'stop') { CF.Sim.stop(); updateSimUi(); return { ok: true }; }
       if (action === 'set_input') {
-        CF.Sim.setInput(key, value);
-        const sl = state.simRefs && state.simRefs.sliders && state.simRefs.sliders[key];
-        if (sl) { sl.range.value = value; sl.val.textContent = `${value}${sl.unit}`; }
-        else return { ok: false, error: `此方案沒有 ${key} 這個輸入（請先 get_state 確認元件）` };
+        // 接受常見別名與大小寫差異（模型常用 humidity/temperature/distance…）
+        const ALIAS = {
+          humidity: 'humi', rh: 'humi', hum: 'humi',
+          temperature: 'temp', temp_c: 'temp',
+          distance: 'dist', range: 'dist',
+          light: 'lux', illuminance: 'lux', brightness: 'lux',
+          water_temp: 'waterTemp', watertemp: 'waterTemp', watertemperature: 'waterTemp',
+          acceleration: 'accel', vibration: 'accel',
+          bme_temp: 'bmeTemp', bmetemp: 'bmeTemp',
+          soil_moisture: 'soil', moisture: 'soil',
+          smoke_level: 'smoke', gas: 'smoke',
+          pot_value: 'pot', potentiometer: 'pot', knob: 'pot'
+        };
+        const sliders = (state.simRefs && state.simRefs.sliders) || {};
+        let k = String(key || '').trim();
+        k = ALIAS[k.toLowerCase()] || k;
+        if (!sliders[k]) {
+          const ci = Object.keys(sliders).find(s => s.toLowerCase() === k.toLowerCase());
+          if (ci) k = ci;
+        }
+        const sl = sliders[k];
+        if (!sl) return { ok: false, error: `此方案沒有「${key}」這個輸入。可用輸入：${Object.keys(sliders).join('、') || '（無）'}` };
+        CF.Sim.setInput(k, value);
+        sl.range.value = value;
+        sl.val.textContent = `${value}${sl.unit}`;
         updateSimUi();
-        return { ok: true, [key]: value, running: CF.Sim.state.running, note: CF.Sim.state.running ? '已生效，OLED／輸出會在下一個週期反映' : '已記錄；目前尚未通電，start 後生效' };
+        return { ok: true, [k]: value, running: CF.Sim.state.running, note: CF.Sim.state.running ? '已生效，OLED／輸出會在下一個週期反映' : '已記錄；目前尚未通電，start 後生效' };
       }
       if (action === 'event') {
         if (event === 'motion') CF.Sim.pulseMotion();
