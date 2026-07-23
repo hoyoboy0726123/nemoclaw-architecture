@@ -74,8 +74,8 @@
     },
     {
       name: 'switch_mode',
-      description: '切換工作台模式：view＝3D 檢視（自動生成結果）、edit＝自由編輯（2D 麵包板手動接線）。',
-      parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['view', 'edit'] } }, required: ['mode'] },
+      description: '切換工作台模式：view＝3D 檢視（自動生成結果）、edit＝自由編輯（2D 麵包板手動接線）、ind＝工業配線（配電盤：NFB/MC/TH-RY/按鈕/馬達，自保持模擬）。',
+      parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['view', 'edit', 'ind'] } }, required: ['mode'] },
       run: a => CF.App.setMode(a.mode)
     },
     {
@@ -175,6 +175,8 @@
       'esp32（DevKit V1）：3.3V 邏輯；感測預設由 3V3 供電，需 5V 的元件（PIR、伺服、繼電器、HC-SR04、MQ-2、水泵、WS2812、LCD1602）會改走 VIN 5V；類比讀值用 GPIO 32–35（0–4095）；GPIO 0/2/12/15 是開機腳位避免佔用；I2C 預設 SDA=GPIO 21、SCL=GPIO 22。腳位最充裕，元件多就選它。',
       'esp32cam（AI Thinker）：相機占走大部分內部腳位，可自由使用的只有 GPIO 13/14/15（GPIO 4 是板載閃光燈）——最多再接一兩個簡單元件（如 PIR）；5V 供電；適合影像類應用（拍照、串流、Teachable Machine）。',
       'nano（Arduino Nano）：無 WiFi，凡是要 MQTT/HTTP/連網的需求一律建議改用 esp32；5V 邏輯；I2C 固定 A4(SDA)/A5(SCL)；類比 A0–A7（0–1023）；適合離線的顯示、警報、伺服小專案。',
+      '',
+      '【工業配線模式（ind）】配電盤教學：NFB、MC 電磁接觸器、TH-RY 積熱電驛、STOP/START 按鈕、指示燈、三相馬達；可模擬自保持啟動迴路。你目前只能用 switch_mode 切換與 get_state 檢視此模式（配線工具下一批提供），操作請引導使用者用畫面上的元件盤與「載入自保持範例」。',
       '',
       '【電路常識】LED 必須串 220Ω 限流電阻；LDR/NTC 要與定值電阻分壓後接類比腳；電解電容「＋」接高電位、二極體 K 朝電源側做反接保護；模組電源腳旁可加 100nF 陶瓷電容去耦；水泵/大電流負載要經繼電器或 MOSFET，不可由 GPIO 直接驅動。不確定某元件細節時先呼叫 get_part_info。',
       '',
