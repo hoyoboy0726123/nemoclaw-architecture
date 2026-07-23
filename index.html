@@ -63,6 +63,15 @@
         <div class="supported-list">NFB · MC 電磁接觸器 · TH-RY 積熱電驛 · PB 按鈕 · PL 指示燈 · 三相馬達 · 3Φ220V ＋ 110V 控制迴路</div>
       </div>
     </div>
+
+    <div id="leftSub" hidden>
+      <div class="req-label">變電所運轉情境（一鍵載入）</div>
+      <div id="subScenarios"></div>
+      <div class="supported">
+        <div class="supported-count">S/S OPERATION RULES</div>
+        <div class="supported-list">CB 斷路器＝可帶載開閉 · DS 隔離開關＝只能在無電流或等電位時操作 · 帶載拉 DS＝弧光事故 · 合 DS 於兩個不同帶電系統＝非同期併聯事故 · 故障→主保護限時跳脫、拒動→後備越級</div>
+      </div>
+    </div>
   </aside>
 
   <!-- ═══════ 中欄：工作台 ═══════ -->
@@ -76,6 +85,7 @@
         <button id="modeViewBtn" class="mode-btn active" type="button">3D 檢視</button>
         <button id="modeEditBtn" class="mode-btn" type="button">自由編輯</button>
         <button id="modeIndBtn" class="mode-btn" type="button">工業配線</button>
+        <button id="modeSubBtn" class="mode-btn" type="button">變電所</button>
       </div>
     </div>
 
@@ -145,6 +155,10 @@
     <div id="stageInd" class="stage-canvas stage-2d" hidden>
       <canvas id="indCanvas"></canvas>
       <div class="canvas-hint">點兩個端子拉線 · 點兩下元件切換／調參數 · 滾輪縮放、拖曳空白平移、雙擊空白復原 · 銀色＝主迴路、橙色＝控制迴路</div>
+    </div>
+    <div id="stageSub" class="stage-canvas stage-2d" hidden>
+      <canvas id="subCanvas"></canvas>
+      <div class="canvas-hint">點 CB／DS 符號分合閘 · 紅＝帶電、灰＝停電 · 滾輪縮放、拖曳空白平移、雙擊空白復原 · 操作自動記入操作票</div>
     </div>
 
     <div class="stage-status">
@@ -272,6 +286,15 @@
         <li><b>匯出</b>：接線表、元件表、迴路圖 SVG，有 PLC 時再加 IEC 61131-3 程式（program.st）與 IO 對照表。</li>
       </ol>
 
+      <h4>變電所模式（單線圖・S/S 運轉操作）</h4>
+      <ol>
+        <li><b>是什麼</b>：抽象層級從「端子接線」拉高到「單線圖」（一條線代表三相），練的是變電所值班員的<b>運轉操作</b>：停送電順序、倒母線、檢修隔離、保護協調。左欄 11 個情境分四區，點單線圖上的 CB／DS 符號就能分合閘（也可用「模擬」分頁的按鈕）。</li>
+        <li><b>兩條鐵則（玩真的）</b>：CB 斷路器可帶載開閉；DS 隔離開關沒有滅弧能力，<b>只能在無電流或等電位時操作</b>——帶載拉 DS＝弧光事故（設備損壞、要重載情境）；把 DS 合到兩個「不同的帶電系統」＝非同期併聯事故。送電＝先合 DS 再合 CB，停電反向。</li>
+        <li><b>倒母線要領（核心科目）</b>：先合母聯（兩條母線等電位）→ 合 B 側 DS → 開 A 側 DS（此時有並聯迴路，安全）→ 開母聯。全程不斷電，任務會即時判定。</li>
+        <li><b>保護協調</b>：「⚡ 注入故障」→ 主保護 CB 限時跳脫、其餘照常供電；先對主保護 CB「💉 注入拒動」再故障 → 後備保護<b>越級跳脫</b>、停電範圍擴大——這就是主保護／後備保護的時間協調。</li>
+        <li><b>操作票</b>：每一步操作（含事故）自動編號記錄，匯出含操作票 .txt、單線圖 .svg 與情境 JSON。</li>
+      </ol>
+
       <h4>讓 AI 助手幫你做（右下角 <span class="help-claw">🐾</span> 按鈕）</h4>
       <p>第一次使用：點對話框右上 ⚙，貼上 Google API Key（<b>aistudio.google.com</b> 免費申請，金鑰只存在你的瀏覽器）。</p>
       <p>一句話描述的公式：<b>「元件／感測什麼 ＋ 條件 ＋ 動作／怎麼回報」</b>，例如：</p>
@@ -300,6 +323,7 @@
 <script src="assets/js/editor.js"></script>
 <script src="assets/js/plc.js"></script>
 <script src="assets/js/industrial.js"></script>
+<script src="assets/js/substation.js"></script>
 <script src="assets/js/sim.js"></script>
 <script src="assets/js/zip.js"></script>
 <script src="assets/js/store.js"></script>

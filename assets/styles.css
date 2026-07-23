@@ -599,6 +599,23 @@ select, input, textarea { font-family: var(--mono); }
   padding: 12px 14px;
   margin-bottom: 14px;
 }
+.sub-task {
+  background: rgba(176, 98, 30, .07);
+  border: 1px solid rgba(176, 98, 30, .35);
+  border-radius: 10px;
+  color: #7a5a1e;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.7;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.sub-task.done {
+  background: rgba(31, 138, 77, .08);
+  border-color: rgba(31, 138, 77, .4);
+  color: #1f8a4d;
+}
 .sim-sec { font-size: 11px; letter-spacing: .2em; color: var(--accent); font-weight: 700; margin: 18px 0 10px; border-top: 1px solid var(--border); padding-top: 14px; }
 .sim-sec:first-of-type { border-top: 0; padding-top: 0; }
 .sim-slider { margin-bottom: 12px; }

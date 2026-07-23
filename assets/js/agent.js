@@ -75,8 +75,8 @@
     },
     {
       name: 'switch_mode',
-      description: '切換工作台模式：view＝3D 檢視（自動生成結果）、edit＝自由編輯（2D 麵包板手動接線）、ind＝工業配線（配電盤：NFB/MC/TH-RY/按鈕/馬達，自保持模擬）。',
-      parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['view', 'edit', 'ind'] } }, required: ['mode'] },
+      description: '切換工作台模式：view＝3D 檢視（自動生成結果）、edit＝自由編輯（2D 麵包板手動接線）、ind＝工業配線（配電盤：NFB/MC/TH-RY/按鈕/馬達，自保持模擬）、sub＝變電所單線圖（S/S 運轉操作）。',
+      parameters: { type: 'object', properties: { mode: { type: 'string', enum: ['view', 'edit', 'ind', 'sub'] } }, required: ['mode'] },
       run: a => CF.App.setMode(a.mode)
     },
     {
@@ -274,6 +274,46 @@
         if (r.ok && !CF.Ind.getParts().some(x => x.def.plc)) r.note = '注意：盤面還沒有 PLC 元件，請先 ind_add_part plc 並接好 L/N/COM/X/Y。';
         return r;
       }
+    },
+    {
+      name: 'sub_load_scenario',
+      description: '在變電所單線圖模式載入運轉情境。可用：sub_basic 單母線停送電、sub_seq2 全站安全停電、sub_section 母線分段檢修、sub_transfer 雙母線倒母線演練、sub_busfault 母線故障復電、sub_half 一次半斷路器檢修、sub_coord 保護協調（主保護跳脫／拒動越級）、sub_txbay 主變隔離檢修、sub_loop 環路解環、sub_arc 帶載拉DS事故重現、sub_grand 綜合演練。',
+      parameters: { type: 'object', properties: { scenario_id: { type: 'string' } }, required: ['scenario_id'] },
+      run: a => {
+        CF.App.setMode('sub');
+        return CF.Sub.loadScenario(String(a.scenario_id || '').toLowerCase().trim());
+      }
+    },
+    {
+      name: 'sub_operate',
+      description: '分／合變電所單線圖上的一台 CB 或 DS（用設備 id，如 CB-IN、DS-FA）。規則：CB 可帶載開閉；DS 只能在無電流或等電位時操作——帶載拉 DS＝弧光事故、合 DS 於兩個不同帶電系統＝非同期併聯事故（都會如實發生並記錄）。操作會自動記入操作票。',
+      parameters: { type: 'object', properties: { device_id: { type: 'string' } }, required: ['device_id'] },
+      run: a => { CF.App.setMode('sub'); return CF.Sub.operate(String(a.device_id || '').trim()); }
+    },
+    {
+      name: 'sub_fault',
+      description: '變電所故障演練：action=inject 注入故障（target 可省略＝情境預設故障點）→ 主保護 CB 限時跳脫；action=clear 清除故障（修復完成）；action=defect 對某台 CB 注入/清除「拒動」缺陷（target 必填 CB id）——拒動時主保護不跳、由後備保護越級跳脫。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['inject', 'clear', 'defect'] },
+          target: { type: 'string', description: 'inject＝故障點 id（可省略）；defect＝CB id（必填）' }
+        },
+        required: ['action']
+      },
+      run: a => {
+        CF.App.setMode('sub');
+        if (a.action === 'inject') return CF.Sub.injectFault(a.target && String(a.target).trim());
+        if (a.action === 'clear') return CF.Sub.clearFault();
+        if (a.action === 'defect') return CF.Sub.toggleDefect(String(a.target || '').trim());
+        return { ok: false, error: '未知動作' };
+      }
+    },
+    {
+      name: 'sub_status',
+      description: '取得變電所單線圖現況：情境、任務與達成狀態、每台 CB/DS 的分合／跳脫／損壞、各饋線受電狀態、操作票與事件紀錄。變電所模式下回答問題或操作前先呼叫。',
+      parameters: { type: 'object', properties: {} },
+      run: () => { CF.App.setMode('sub'); return CF.Sub.status(); }
     }
   ];
 
@@ -307,6 +347,8 @@
       '元件與端子：POWER（R/S/T/C1/C2，線電壓可調，可模擬停電）、NFB（1-2/3-4/5-6，雙擊開關）、FUSE 保險絲（同 NFB 端子，常通）、MC 電磁接觸器（主 1-2/3-4/5-6；線圈 A1-A2；輔助 a 13-14、b 21-22）、TR 限時電驛（A1-A2；延時 b 55-56、延時 a 67-68；秒數可調）、MK 電力電驛（A1-A2；a 13-14/23-24；b 21-22）、TH-RY（主串接；b 95-96；a 97-98 跳脫閉合；過載整定可調，電流超過會真的熱跳脫）、CO 過電流電驛 51（同 TH-RY 端子，跳脫更快，整定可調）、STOP＝pb_nc（1-2）、START＝pb_no（3-4）、COS（A 位 1-2／B 位 3-4）、GL/RL/BZ（X1/X2）、motor（U/V/W，運轉電流可調——調大會讓保護電驛跳脫）、motor6（U1V1W1＋U2V2W2）、VM 電壓表（P1/P2 跨兩相）、AM 電流表（1-2 串一相）、SC 電容器組（U/V/W）、TX 控制變壓器（P1/P2 跨兩相→S1/S2 出 110V 控制電源）、ATS（常用 1/3/5、備用 7/9/11、輸出 2/4/6，自動切換）、GEN 發電機（GR/GS/GT，停電自動起動 AMF，起動延時可調）、PLC（L/N、COM→X0-X7、C0＋Y0-Y7）。',
       '接線鐵則：控制迴路從 C1（或 TX 的 S1）出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2（或 S2）；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖）。發電機絕不可與市電直接相連，必須經 ATS；受電盤的控制電源（TX）要取在 ATS 之後。',
       '【高壓受電（11.4kV，紫色端子 dom=hv）】HV-IN 進線（H1/H2/H3，可模擬台電停電）→ LA 避雷器（並聯）→ DS 隔離開關（1-6，只能無載操作！帶載開斷＝弧光事故）→ VCB 真空斷路器（1-6＋跳脫線圈 TC1/TC2）或 LBS＋PF 熔絲 → CT 比流器（串接＋k/l 訊號）→ TR-3φ 變壓器（一次 1/3/5 高壓、二次 2/4/6 低壓 380V，一次電流＝二次÷30）→ 低壓側照舊。RY51 反時限電驛：S1/S2←CT k/l、T1/T2→VCB TC1/TC2，始動電流（一次A）可調，越過載跳越快。PT 比壓器＝高壓版 TX（P1/P2 高壓→S1/S2 110V）。操作順序：送電 DS→VCB、停電 VCB→DS。特高壓：161kV（dom=ehv 藍）經 DS-161/GCB-161/CT-161→MTX-161 主變降 11.4kV；345kV（dom=uhv 紅）經 DS-345/GCB-345→MTX-345 聯絡主變降 161kV——可四級串級 345→161→11.4→380，電流逐級換算（÷變比），GCB 同樣有 TC1/TC2 跳脫線圈可接 RY51。【設備試驗】MEG 絕緣電阻（L→設備、E→GND，低壓≥1MΩ/高壓≥10MΩ）、HIPOT 耐壓（H→設備、R→GND，缺陷會閃絡）、CTT CT 變比極性（P1P2→CT 1/2、S1S2→k/l）、RTS 電驛注入（I1I2→RY S1S2，驗反時限曲線±10%）。規則：試驗必須停電進行、盤上有試驗器不可通電；ind_control 的 run_test 執行試驗、inject_defect 注入/清除教學缺陷（絕緣劣化/CT極性反/電驛遲緩）。工具：ind_load_preset 載入 55 個五區範例、ind_add_part／ind_wire 自由配線（「標籤:端子」如 MC1:13）、ind_control 通電操作（含 outage 模擬停電、set_param 調參數）、ind_status 看現況（含各元件可調參數）。接線後 ERC 有 error 必須修到通過才能通電。',
+      '',
+      '【變電所單線圖模式（sub）】變電所運轉操作教學（抽象層級＝單線圖，一條線代表三相）。鐵則：CB 斷路器可帶載開閉；DS 隔離開關沒有滅弧能力，只能在「無電流」或「等電位（有並聯迴路，如母聯／環路）」時操作——帶載拉 DS＝弧光事故（設備損壞須重載情境）、合 DS 於兩個不同帶電系統＝非同期併聯事故。送電順序＝先合 DS 再合 CB，停電反向。故障演練：sub_fault inject 注入→主保護 CB 限時跳脫；先對主保護 CB 注入拒動（defect）再故障→後備保護越級跳脫（停電範圍擴大）＝保護協調。倒母線要領：先合母聯（等電位）→合目標側 DS→開原側 DS→開母聯，全程不斷電。工具：sub_load_scenario 載入 11 個情境、sub_operate 分合 CB/DS、sub_fault 故障/拒動、sub_status 看現況（含操作票）。每個情境有任務判定，操作全部自動記入操作票可匯出。',
       '',
       '【PLC】梯形圖模型：每階＝欄串聯（AND），每欄可疊 2 個接點（並聯 OR），線圈在最右。位址：X0-X7 輸入、Y0-Y7 輸出、M0-M7 內部繼電器、T0-T3 TON 計時器（秒）、C0-C3 CTU 計數器。自保持範式：(X0 OR Y0) AND X1 → OUT Y0（STOP 實體接 b 接點、程式用常開 X1）。用 plc_program 讀寫程式；盤面要有 plc 元件且 L/N 接 C1/C2 才會執行；輸出 Y 得電＝Y 端子與 C0 導通。匯出檔含 IEC 61131-3 ST（program.st）與 IO 對照表。',
       '',
