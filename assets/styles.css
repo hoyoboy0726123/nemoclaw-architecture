@@ -1033,3 +1033,35 @@ select, input, textarea { font-family: var(--mono); }
 }
 .lp-hint { font-family: var(--sans); font-size: 10px; color: var(--dim); margin-bottom: 6px; }
 .lp-err { font-family: var(--sans); font-size: 10.5px; color: #b03030; min-height: 12px; }
+
+/* ═══════════ 工業範例三級分區 ═══════════ */
+.ind-tier { margin-bottom: 6px; }
+.ind-tier-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 8px 2px 6px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  color: var(--dim);
+  text-align: left;
+  border-top: 1px solid var(--border);
+}
+.ind-tier-head:hover { color: var(--text-bright); }
+.ind-tier-head .tri { transition: transform .15s; font-size: 9px; }
+.ind-tier.collapsed .tri { transform: rotate(-90deg); }
+.ind-tier-head em {
+  font-style: normal;
+  margin-left: auto;
+  background: rgba(14, 122, 110, .1);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 1px 7px;
+  font-size: 10px;
+}
+.ind-tier.collapsed .ind-tier-body { display: none; }

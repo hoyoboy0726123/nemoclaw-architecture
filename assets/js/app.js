@@ -695,6 +695,13 @@
         b.addEventListener('click', () => openLadder());
         ops.appendChild(b);
       }
+      if (p.def.outage) {
+        const b = document.createElement('button');
+        b.className = 'sim-ev'; b.type = 'button';
+        b.textContent = '🔌 模擬市電停電／復電';
+        b.addEventListener('click', () => { CF.Ind.toggleOutage(); updateIndSimUi(); });
+        ops.appendChild(b);
+      }
     }
     if (!ops.children.length) {
       const n = document.createElement('div');
@@ -750,6 +757,11 @@
       if (p.def.selector) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval on">位置 ${p.on ? 'B' : 'A'}</div></div>`);
       if (p.def.trip && p.tripped) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval" style="color:var(--amber)">TRIP ⚡</div></div>`);
       if (p.def.plc) chips.push(`<div class="sim-out"><div class="k">PLC</div><div class="sim-chipval ${p.powered ? 'on' : ''}">${running ? (p.powered ? 'RUN ▶' : '未供電') : 'STOP ■'}</div></div>`);
+      if (p.def.outage && p.outage) chips.push(`<div class="sim-out"><div class="k">市電</div><div class="sim-chipval" style="color:var(--amber)">停電 ✕</div></div>`);
+      if (p.def.meter) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${(p.reading || 0) > 0 ? 'on' : ''}">${p.def.meter === 'V' ? Math.round(p.reading || 0) + ' V' : (p.reading || 0).toFixed(1) + ' A'}</div></div>`);
+      if (p.def.gen) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.running ? 'on' : ''}">${p.running ? '發電中 ⚙' : (p.startAt ? '起動中⋯' : '待機')}</div></div>`);
+      if (p.def.ats) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.pos ? 'on' : ''}">${p.pos === 'N' ? '常用 N' : p.pos === 'E' ? '備用 E' : '開路'}</div></div>`);
+      if (p.def.capbank) chips.push(`<div class="sim-out"><div class="k">${p.label}</div><div class="sim-chipval ${p.scEn ? 'on' : ''}">${p.scEn ? 'PF 0.98 ✦' : '切離'}</div></div>`);
     }
     refs.status.innerHTML = chips.join('') || '<div class="sim-note">尚無器件。</div>';
     refs.log.innerHTML = CF.Ind.getLog().map(l => `<div class="lg-sys">${esc(l)}</div>`).join('');
@@ -871,15 +883,35 @@
     $('#indExample').addEventListener('click', () => CF.Ind.loadExample());
     $('#indLadderBtn').addEventListener('click', () => openLadder());
     $('#indClear').addEventListener('click', () => CF.Ind.clear());
-    // 左欄：工業模式經典迴路範例卡
+    // 左欄：工業模式經典迴路範例卡（三級分區，可摺疊）
     const ipHost = $('#indPresets');
-    for (const pr of CF.Ind.PRESETS) {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'preset-card';
-      card.innerHTML = `<b>${pr.name}</b><span>${pr.desc}</span>`;
-      card.addEventListener('click', () => CF.Ind.loadPreset(pr.id));
-      ipHost.appendChild(card);
+    const IND_TIERS = [
+      ['basic', '基礎工配（丙級）', false],
+      ['adv', '進階／電力配電（乙級・受電盤）', true],
+      ['plc', 'PLC 可程式控制', true]
+    ];
+    for (const [tier, title, collapsed] of IND_TIERS) {
+      const list = CF.Ind.PRESETS.filter(p => p.tier === tier);
+      const g = document.createElement('div');
+      g.className = 'ind-tier' + (collapsed ? ' collapsed' : '');
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'ind-tier-head';
+      head.innerHTML = `<span class="tri">▾</span>${title}<em>${list.length}</em>`;
+      const body = document.createElement('div');
+      body.className = 'ind-tier-body';
+      head.addEventListener('click', () => g.classList.toggle('collapsed'));
+      for (const pr of list) {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'preset-card';
+        card.innerHTML = `<b>${pr.name}</b><span>${pr.desc}</span>`;
+        card.addEventListener('click', () => CF.Ind.loadPreset(pr.id));
+        body.appendChild(card);
+      }
+      g.appendChild(head);
+      g.appendChild(body);
+      ipHost.appendChild(g);
     }
 
     const ipal = $('#indPalette');

@@ -150,9 +150,14 @@
     },
     {
       name: 'ind_load_preset',
-      description: '在工業配線模式載入經典迴路範例（會覆蓋盤面）。可用 id：selfhold 自保持、jog 寸動、twolamp 指示燈、twoplace 兩處控制、fwdrev 正逆轉互鎖、seq 順序啟動、ydelta Y-Δ 降壓啟動、alarm 過載警報、plc_selfhold PLC 自保持、plc_timer PLC 延時啟動。',
-      parameters: { type: 'object', properties: { preset_id: { type: 'string', enum: ['selfhold', 'jog', 'twolamp', 'twoplace', 'fwdrev', 'seq', 'ydelta', 'alarm', 'plc_selfhold', 'plc_timer'] } }, required: ['preset_id'] },
-      run: a => { CF.App.setMode('ind'); return CF.Ind.loadPreset(a.preset_id); }
+      description: '在工業配線模式載入經典迴路範例（會覆蓋盤面），共 30 個分三級。基礎：doorbell 門鈴、selfhold 自保持、jog 寸動、joghold 寸動/連續切換、twolamp 指示燈、twoplace 兩處控制、mkpilot MK中繼、delaystart 暖機延時、seq 順序啟動、alarm 過載警報。進階/電力：fwdrev 正逆轉、ydelta Y-Δ、seqdelay 延時順序、pumps 雙泵選擇、flasher 閃爍警報、co51 過電流保護、meterpanel 受電儀表盤、capbank 功因電容、ats1 停電自動切換、ats2 受電盤總和。PLC：plc_selfhold、plc_jog、plc_timer、plc_counter 計數啟動、plc_flash 交替閃爍、plc_fwdrev、plc_seq、plc_ydelta、plc_conveyor 輸送帶、plc_alarm 斷續警報。',
+      parameters: { type: 'object', properties: { preset_id: { type: 'string' } }, required: ['preset_id'] },
+      run: a => {
+        CF.App.setMode('ind');
+        const r = CF.Ind.loadPreset(String(a.preset_id || '').toLowerCase().trim());
+        if (!r.ok) r.available = CF.Ind.PRESETS.map(p => p.id);
+        return r;
+      }
     },
     {
       name: 'ind_add_part',
@@ -186,9 +191,10 @@
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['start', 'stop', 'press', 'toggle_nfb', 'toggle_cos', 'trip', 'set_timer'] },
-          target: { type: 'string', description: '元件標籤，press/trip/set_timer 等需要' },
-          seconds: { type: 'number', description: 'set_timer 用，1–60' }
+          action: { type: 'string', enum: ['start', 'stop', 'press', 'toggle_nfb', 'toggle_cos', 'trip', 'set_timer', 'set_param', 'outage'] },
+          target: { type: 'string', description: '元件標籤，press/trip/set_timer/set_param 需要' },
+          seconds: { type: 'number', description: 'set_timer 用，1–60' },
+          value: { type: 'number', description: 'set_param 用：TR 秒數、TH-RY/CO 整定電流、馬達運轉電流、POWER 線電壓、GEN 起動延時、SC 電容電流' }
         },
         required: ['action']
       },
@@ -197,6 +203,7 @@
         const find = lbl => CF.Ind.getParts().find(p => p.label.toLowerCase() === String(lbl || '').toLowerCase().trim());
         if (a.action === 'start') return CF.Ind.simStart();
         if (a.action === 'stop') { CF.Ind.simStop(); return { ok: true }; }
+        if (a.action === 'outage') return CF.Ind.toggleOutage();
         if (a.action === 'press') {
           const p = find(a.target);
           if (!p || !p.def.momentary) return { ok: false, error: `找不到按鈕「${a.target}」。可按：${CF.Ind.getParts().filter(x => x.def.momentary).map(x => x.label).join('、') || '無'}` };
@@ -210,6 +217,11 @@
         if (a.action === 'toggle_cos') return CF.Ind.toggleCos(find(a.target) && find(a.target).uid);
         if (a.action === 'trip') { CF.Ind.tripThry(find(a.target) && find(a.target).uid); return { ok: true }; }
         if (a.action === 'set_timer') return CF.Ind.setTrPreset(find(a.target) && find(a.target).uid, a.seconds);
+        if (a.action === 'set_param') {
+          const p = find(a.target);
+          if (!p) return { ok: false, error: `找不到元件「${a.target}」。目前盤上：${CF.Ind.getParts().map(x => x.label).join('、')}` };
+          return CF.Ind.setParam(p.uid, a.value !== undefined ? a.value : a.seconds);
+        }
         return { ok: false, error: '未知動作' };
       }
     },
@@ -269,8 +281,8 @@
       'nano（Arduino Nano）：無 WiFi，凡是要 MQTT/HTTP/連網的需求一律建議改用 esp32；5V 邏輯；I2C 固定 A4(SDA)/A5(SCL)；類比 A0–A7（0–1023）；適合離線的顯示、警報、伺服小專案。',
       '',
       '【工業配線模式（ind）】台灣工配（丙級／乙級）教學：雙電壓域＝三相主迴路（R/S/T）＋110V 控制迴路（C1/C2），兩域不可混接。',
-      '元件與端子：POWER（R/S/T/C1/C2）、NFB（1-2/3-4/5-6，雙擊開關）、MC 電磁接觸器（主 1-2/3-4/5-6；線圈 A1-A2；輔助 a 13-14、b 21-22）、TR 限時電驛（線圈 A1-A2；延時 b 55-56、延時 a 67-68；預設 3 秒）、MK 電力電驛（A1-A2；a 13-14/23-24；b 21-22）、TH-RY（主串接；b 95-96 串線圈迴路；a 97-98 跳脫時閉合接警報）、STOP＝pb_nc（1-2 常閉）、START＝pb_no（3-4 常開）、COS（A 位 1-2／B 位 3-4）、GL/RL 指示燈與 BZ 蜂鳴器（X1/X2）、motor（U/V/W）、motor6（U1V1W1＋U2V2W2，Y-Δ 用）、PLC（L/N 電源、COM→按鈕→X0-X7 輸入、C0＋Y0-Y7 繼電器輸出）。',
-      '接線鐵則：控制迴路從 C1 出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖），否則相間短路。工具：ind_load_preset 載入 10 個經典範例、ind_add_part／ind_wire 自由配線（端子寫法「標籤:端子」如 MC1:13）、ind_control 通電與操作、ind_status 看現況。接線後 ERC 有 error 必須修到通過才能通電。',
+      '元件與端子：POWER（R/S/T/C1/C2，線電壓可調，可模擬停電）、NFB（1-2/3-4/5-6，雙擊開關）、FUSE 保險絲（同 NFB 端子，常通）、MC 電磁接觸器（主 1-2/3-4/5-6；線圈 A1-A2；輔助 a 13-14、b 21-22）、TR 限時電驛（A1-A2；延時 b 55-56、延時 a 67-68；秒數可調）、MK 電力電驛（A1-A2；a 13-14/23-24；b 21-22）、TH-RY（主串接；b 95-96；a 97-98 跳脫閉合；過載整定可調，電流超過會真的熱跳脫）、CO 過電流電驛 51（同 TH-RY 端子，跳脫更快，整定可調）、STOP＝pb_nc（1-2）、START＝pb_no（3-4）、COS（A 位 1-2／B 位 3-4）、GL/RL/BZ（X1/X2）、motor（U/V/W，運轉電流可調——調大會讓保護電驛跳脫）、motor6（U1V1W1＋U2V2W2）、VM 電壓表（P1/P2 跨兩相）、AM 電流表（1-2 串一相）、SC 電容器組（U/V/W）、TX 控制變壓器（P1/P2 跨兩相→S1/S2 出 110V 控制電源）、ATS（常用 1/3/5、備用 7/9/11、輸出 2/4/6，自動切換）、GEN 發電機（GR/GS/GT，停電自動起動 AMF，起動延時可調）、PLC（L/N、COM→X0-X7、C0＋Y0-Y7）。',
+      '接線鐵則：控制迴路從 C1（或 TX 的 S1）出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2（或 S2）；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖）。發電機絕不可與市電直接相連，必須經 ATS；受電盤的控制電源（TX）要取在 ATS 之後。工具：ind_load_preset 載入 30 個三級範例、ind_add_part／ind_wire 自由配線（「標籤:端子」如 MC1:13）、ind_control 通電操作（含 outage 模擬停電、set_param 調參數）、ind_status 看現況（含各元件可調參數）。接線後 ERC 有 error 必須修到通過才能通電。',
       '',
       '【PLC】梯形圖模型：每階＝欄串聯（AND），每欄可疊 2 個接點（並聯 OR），線圈在最右。位址：X0-X7 輸入、Y0-Y7 輸出、M0-M7 內部繼電器、T0-T3 TON 計時器（秒）、C0-C3 CTU 計數器。自保持範式：(X0 OR Y0) AND X1 → OUT Y0（STOP 實體接 b 接點、程式用常開 X1）。用 plc_program 讀寫程式；盤面要有 plc 元件且 L/N 接 C1/C2 才會執行；輸出 Y 得電＝Y 端子與 C0 導通。匯出檔含 IEC 61131-3 ST（program.st）與 IO 對照表。',
       '',
