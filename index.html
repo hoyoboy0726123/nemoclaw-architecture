@@ -28,7 +28,10 @@
     </div>
   </div>
   <div class="engine-status"><span class="dot dot-green"></span>LAB ENGINE <b>READY</b></div>
-  <button id="exportBtn" class="export-btn" type="button">匯出專案 <span class="arrow">↓</span></button>
+  <div class="topbar-actions">
+    <button id="precheckBtn" class="precheck-btn" type="button">🔍 匯出前檢查</button>
+    <button id="exportBtn" class="export-btn" type="button">匯出專案 <span class="arrow">↓</span></button>
+  </div>
 </header>
 
 <main class="layout">
@@ -219,11 +222,11 @@
       </div>
       <div class="docs-body">
         <div class="docs-mode-row">
-          <button id="groqBtn" class="groq-btn" type="button">GROQ 動態分析</button>
+          <button id="groqBtn" class="groq-btn" type="button">AI 設計評析</button>
           <span id="docsMode" class="docs-mode">內建規則</span>
         </div>
         <div id="groqPanel" class="groq-panel" hidden>
-          <p>貼上 Groq API 金鑰即可啟用動態分析；金鑰只儲存在你瀏覽器的 localStorage，不會上傳到任何伺服器。</p>
+          <p>貼上 Groq API 金鑰即可啟用 AI 設計評析（整體設計評論）；金鑰只儲存在你瀏覽器的 localStorage，不會上傳到任何伺服器。</p>
           <div class="groq-key-row">
             <input id="groqKeyInput" type="password" placeholder="gsk_...">
             <button id="groqSaveKey" type="button">儲存</button>
@@ -238,6 +241,23 @@
   </aside>
 
 </main>
+
+<!-- 匯出前 AI 檢查 -->
+<div id="precheckOverlay" class="help-overlay" hidden>
+  <div class="help-modal">
+    <div class="help-head">
+      <span>🔍 匯出前 AI 檢查</span>
+      <span class="precheck-head-actions">
+        <button id="precheckRerun" class="help-btn" type="button">↺ 重新檢查</button>
+        <button id="precheckClose" class="ag-icon" type="button">✕</button>
+      </span>
+    </div>
+    <div class="help-body">
+      <div id="precheckStatus" class="precheck-status"></div>
+      <pre id="precheckResult" class="precheck-result" hidden></pre>
+    </div>
+  </div>
+</div>
 
 <!-- 使用說明 -->
 <div id="helpOverlay" class="help-overlay" hidden>
@@ -294,6 +314,10 @@
         <li><b>保護協調</b>：「⚡ 注入故障」→ 主保護 CB 限時跳脫、其餘照常供電；先對主保護 CB「💉 注入拒動」再故障 → 後備保護<b>越級跳脫</b>、停電範圍擴大——這就是主保護／後備保護的時間協調。</li>
         <li><b>操作票</b>：每一步操作（含事故）自動編號記錄，匯出含操作票 .txt、單線圖 .svg 與情境 JSON。</li>
       </ol>
+
+      <h4>匯出前 AI 檢查（頂欄 🔍）</h4>
+      <p>匯出燒錄（或送電）前的最後一道簽核：按頂欄「<b>🔍 匯出前檢查</b>」，系統會把接線表、ERC 結果、程式碼（工業模式＝接線表＋元件表；變電所模式＝操作票）連同確定性檢查結論，送到<b>你自己的 Google API Key</b>（和 AI 助手共用同一把）做審查，固定回覆四段：不一致點、風險、檢查清單、預期行為。報告會以 <b>檢查報告.md</b> 附進匯出 ZIP；電路改過之後舊報告會標示過時，重按即可更新。</p>
+      <p class="help-dim">AI 審查屬建議性質——它是第二雙眼睛，不是執行驗證；接線對錯請以 CHECKS 分頁的確定性結果為準。</p>
 
       <h4>讓 AI 助手幫你做（右下角 <span class="help-claw">🐾</span> 按鈕）</h4>
       <p>第一次使用：點對話框右上 ⚙，貼上 Google API Key（<b>aistudio.google.com</b> 免費申請，金鑰只存在你的瀏覽器）。</p>

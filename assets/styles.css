@@ -697,6 +697,42 @@ select, input, textarea { font-family: var(--mono); }
 .sim-cmd-row button { border: 0; background: var(--panel-2); color: var(--accent); font-weight: 700; font-size: 12px; padding: 0 16px; }
 .sim-note { font-family: var(--sans); font-size: 11.5px; color: var(--dim); line-height: 1.7; margin-top: 6px; }
 
+/* 匯出前 AI 檢查 */
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.precheck-btn {
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 12.5px;
+  letter-spacing: .06em;
+  font-weight: 600;
+  padding: 10px 14px;
+}
+.precheck-btn:hover { background: var(--accent-soft); }
+.precheck-head-actions { display: flex; align-items: center; gap: 10px; }
+.precheck-status {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+.precheck-status.warn { color: var(--amber); }
+.precheck-status.err { color: var(--red); }
+.precheck-result {
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: #fff;
+  padding: 14px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* 說明 */
 .docs-body { flex: 1; overflow-y: auto; min-height: 0; padding: 18px 20px 30px; }
 .docs-mode-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
