@@ -336,12 +336,63 @@ CF.Sub = (function () {
     changed();
     return { ok: true };
   }
+  /* 還原前清洗自建圖定義：外部 .json 可能被手改或損壞，任何欄位都不能信 */
+  function sanitizeDef(def) {
+    const num = v => typeof v === 'number' && isFinite(v);
+    const nodes = {};
+    if (def.nodes && typeof def.nodes === 'object') {
+      for (const [id, p] of Object.entries(def.nodes)) {
+        if (typeof id === 'string' && id && Array.isArray(p) && num(p[0]) && num(p[1])) nodes[id] = [clampX(p[0]), clampY(p[1])];
+      }
+    }
+    const buses = [];
+    const busIds = new Set();
+    for (const b of (Array.isArray(def.buses) ? def.buses : [])) {
+      if (!b || typeof b !== 'object') continue;
+      if (typeof b.id !== 'string' || !b.id || busIds.has(b.id)) continue;
+      if (!num(b.x1) || !num(b.x2) || !num(b.y)) continue;
+      busIds.add(b.id);
+      buses.push({ id: b.id, x1: clampX(b.x1), x2: clampX(b.x2), y: clampY(b.y), label: typeof b.label === 'string' ? b.label.slice(0, 16) : b.id });
+    }
+    const TYPES = ['src', 'feeder', 'cb', 'ds', 'tx', 'es'];
+    const known = id => typeof id === 'string' && (!!nodes[id] || busIds.has(id));
+    const elements = [];
+    const elIds = new Set();
+    for (const e of (Array.isArray(def.elements) ? def.elements : [])) {
+      if (!e || typeof e !== 'object') continue;
+      if (typeof e.id !== 'string' || !e.id || elIds.has(e.id)) continue;
+      if (!TYPES.includes(e.type)) continue;
+      if (e.type === 'src' || e.type === 'feeder') {
+        if (!nodes[e.node]) continue;                     // 端點遺失＝丟棄，避免繪製時崩潰
+      } else if (e.type === 'es') {
+        if (!known(e.a)) continue;
+      } else if (!known(e.a) || !known(e.b) || e.a === e.b) continue;
+      elIds.add(e.id);
+      const el = { id: e.id, type: e.type, label: typeof e.label === 'string' ? e.label.slice(0, 16) : e.id };
+      if (e.node) el.node = e.node;
+      if (e.a) el.a = e.a;
+      if (e.b) el.b = e.b;
+      if (e.type === 'feeder') el.amps = num(e.amps) ? Math.max(5, Math.min(600, Math.round(e.amps))) : 60;
+      if (e.type !== 'tx' && e.type !== 'src' && e.type !== 'feeder') {
+        el.closed = !!e.closed;
+        el.fault = !!e.fault;
+        el.defect = !!e.defect;
+        el.tripped = !!e.tripped;
+      }
+      if (num(e.x)) el.x = clampX(e.x);
+      if (num(e.selx)) el.selx = e.selx;
+      if (num(e.seg)) el.seg = e.seg;
+      elements.push(el);
+    }
+    return { nodes, buses, elements };
+  }
+
   function recount() {
     // 還原自由建構後，讓流水號接續既有 id，避免撞名
     st.counters = { n: 0, b: 0, d: {} };
-    for (const id of Object.keys(st.sc.nodes)) { const m = id.match(/^n(\d+)$/); if (m) st.counters.n = Math.max(st.counters.n, +m[1]); }
-    for (const b of st.sc.buses) { const m = b.id.match(/^B(\d+)$/); if (m) st.counters.b = Math.max(st.counters.b, +m[1]); }
-    for (const el of st.sc.elements) { const m = el.id.match(/^([A-Z]+)-(\d+)$/); if (m) st.counters.d[m[1]] = Math.max(st.counters.d[m[1]] || 0, +m[2]); }
+    for (const id of Object.keys(st.sc.nodes)) { const m = String(id).match(/^n(\d+)$/); if (m) st.counters.n = Math.max(st.counters.n, +m[1]); }
+    for (const b of st.sc.buses) { const m = String(b && b.id).match(/^B(\d+)$/); if (m) st.counters.b = Math.max(st.counters.b, +m[1]); }
+    for (const el of st.sc.elements) { const m = String(el && el.id).match(/^([A-Z]+)-(\d+)$/); if (m) st.counters.d[m[1]] = Math.max(st.counters.d[m[1]] || 0, +m[2]); }
   }
   const isCustom = () => !!(st.sc && st.sc.id === 'custom');
 
@@ -877,6 +928,7 @@ CF.Sub = (function () {
   }
   function midOf(el) {
     const [pa, pb] = segOf(el);
+    if (!pa || !pb) return [0, 0];   // 端點缺失（資料損壞）時不讓繪製崩潰
     const t = el.seg !== undefined ? el.seg : 0.5;
     return [pa[0] + (pb[0] - pa[0]) * t, pa[1] + (pb[1] - pa[1]) * t];
   }
@@ -920,6 +972,7 @@ CF.Sub = (function () {
     // 線段與設備
     for (const el of st.sc.elements) {
       if (el.type === 'src') {
+        if (!st.sc.nodes[el.node]) continue;
         const [x, y] = st.sc.nodes[el.node];
         const hot = true;
         ctx.strokeStyle = colOf(hot);
@@ -934,6 +987,7 @@ CF.Sub = (function () {
         continue;
       }
       if (el.type === 'feeder') {
+        if (!st.sc.nodes[el.node]) continue;
         const [x, y] = st.sc.nodes[el.node];
         const hot = hotN(el.node);
         const isF = faultN === el.id;
@@ -1259,8 +1313,8 @@ CF.Sub = (function () {
     const el2 = [];
     for (const b of st.sc.buses) el2.push(`<line x1="${b.x1}" y1="${b.y}" x2="${b.x2}" y2="${b.y}" stroke="${col(b.id)}" stroke-width="7" stroke-linecap="round"/><text x="${b.x1}" y="${b.y - 12}" font-size="12" fill="#3b4046">${esc(b.label)}</text>`);
     for (const el of st.sc.elements) {
-      if (el.type === 'src') { const [x, y] = st.sc.nodes[el.node]; el2.push(`<text x="${x}" y="${y - 38}" font-size="12" text-anchor="middle" fill="#7a2a45">${esc(el.label)}</text><line x1="${x}" y1="${y - 30}" x2="${x}" y2="${y}" stroke="#c2402a" stroke-width="3"/>`); continue; }
-      if (el.type === 'feeder') { const [x, y] = st.sc.nodes[el.node]; el2.push(`<line x1="${x}" y1="${y}" x2="${x}" y2="${y + 30}" stroke="${col(el.node)}" stroke-width="3"/><text x="${x}" y="${y + 50}" font-size="12" text-anchor="middle" fill="#5a6067">${esc(el.label)}</text>`); continue; }
+      if (el.type === 'src') { if (!st.sc.nodes[el.node]) continue; const [x, y] = st.sc.nodes[el.node]; el2.push(`<text x="${x}" y="${y - 38}" font-size="12" text-anchor="middle" fill="#7a2a45">${esc(el.label)}</text><line x1="${x}" y1="${y - 30}" x2="${x}" y2="${y}" stroke="#c2402a" stroke-width="3"/>`); continue; }
+      if (el.type === 'feeder') { if (!st.sc.nodes[el.node]) continue; const [x, y] = st.sc.nodes[el.node]; el2.push(`<line x1="${x}" y1="${y}" x2="${x}" y2="${y + 30}" stroke="${col(el.node)}" stroke-width="3"/><text x="${x}" y="${y + 50}" font-size="12" text-anchor="middle" fill="#5a6067">${esc(el.label)}</text>`); continue; }
       if (el.type === 'es') {
         const ap = esAnchorPt(el), pp = esPos(el);
         if (ap && pp) el2.push(`<line x1="${ap[0]}" y1="${ap[1]}" x2="${pp[0]}" y2="${pp[1]}" stroke="${el.closed ? '#1f7a4d' : '#9aa2aa'}" stroke-width="2.5"${el.closed ? '' : ' stroke-dasharray="4 3"'}/><line x1="${pp[0] - 9}" y1="${pp[1]}" x2="${pp[0] + 9}" y2="${pp[1]}" stroke="#3b4046" stroke-width="2.5"/><text x="${pp[0] + 12}" y="${pp[1] + 5}" font-size="10.5" fill="#5a6067">${esc(el.label)}${el.closed ? ' ⏚' : ''}</text>`);
@@ -1300,9 +1354,10 @@ CF.Sub = (function () {
     if (d.scId === 'custom') {
       if (!d.def || typeof d.def !== 'object') return;
       buildStart();
-      st.sc.nodes = d.def.nodes && typeof d.def.nodes === 'object' ? d.def.nodes : {};
-      st.sc.buses = Array.isArray(d.def.buses) ? d.def.buses : [];
-      st.sc.elements = Array.isArray(d.def.elements) ? d.def.elements : [];
+      const clean = sanitizeDef(d.def);
+      st.sc.nodes = clean.nodes;
+      st.sc.buses = clean.buses;
+      st.sc.elements = clean.elements;
       recount();
       st.sheet = Array.isArray(d.sheet) ? d.sheet.slice(-60) : [];
       st.everLost = d.everLost && typeof d.everLost === 'object' ? d.everLost : {};
