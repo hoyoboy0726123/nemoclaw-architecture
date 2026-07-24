@@ -4,7 +4,8 @@
  * 核心規則（真模擬）：
  *   - CB 斷路器可帶載開閉；DS 隔離開關只能在「無電流」或「等電位（並聯迴路存在）」時操作，
  *     判定方式＝拆掉/接上該 DS 後，所有饋線的受電狀態是否改變——改變＝有負載電流經過＝弧光事故。
- *   - 合 DS 到兩個「不同的帶電網」＝非同期併聯＝事故。
+ *   - 「投入」類錯誤（帶載投入／併聯兩個帶電系統）＝聯鎖阻止（不損壞、提示正確程序）；
+ *     跨帶電系統的併聯只能由 CB 做（同期檢定 25）。
  *   - 故障注入 → 主保護 CB 限時跳脫；注入「拒動」缺陷 → 後備保護越級跳脫（保護協調教學）。
  *   - 所有操作自動記錄成「操作票」，可匯出。
  */
@@ -643,26 +644,30 @@ CF.Sub = (function () {
       const before = feederStates();
       const after = wasClosed ? feederStates(el.id) : feederStates(null, el.id);
       const delta = Object.keys(before).filter(f => before[f] !== after[f]);
-      if (delta.length) {
+      if (wasClosed && delta.length) {
+        // 帶載「開斷」DS＝弧光事故（負面教材核心，保留破壞性後果）
         el.fault = true;
         el.closed = false;
-        sheet(`✗ ${wasClosed ? '開斷' : '投入'} ${lbl} —— 弧光事故！`);
-        pushLog(`⚡⚡ ${lbl} ${'帶負載操作'}——DS 沒有滅弧能力，弧光事故！受影響：${delta.join('、')}。正確做法：先以 CB 切斷負載，或建立等電位並聯迴路（母聯／環路）後再操作 DS。`);
+        sheet(`✗ 開斷 ${lbl} —— 弧光事故！`);
+        pushLog(`⚡⚡ ${lbl} 帶負載開斷——DS 沒有滅弧能力，弧光事故！受影響：${delta.join('、')}。正確做法：先以 CB 切斷負載，或建立等電位並聯迴路（母聯／環路）後再操作 DS。`);
         st.everLostMark();
         changed();
         return { ok: true, fault: true, msg: '弧光事故：DS 帶負載操作' };
       }
-      if (!el.closed) {
-        // 合 DS 到兩個不同帶電網＝非同期併聯
+      if (!wasClosed) {
+        // 「投入」類錯誤＝聯鎖阻止（實務：開關場連鎖不讓你合，設備不損壞、可改走正確程序）
         const uf = buildUF();
         const live = liveSetOf(uf);
         const fa = uf.find(el.a), fb = uf.find(el.b);
         if (live.has(fa) && live.has(fb) && fa !== fb) {
-          el.fault = true;
-          sheet(`✗ 投入 ${lbl} —— 非同期併聯事故！`);
-          pushLog(`⚡⚡ ${lbl} 兩側是「不同的帶電系統」——未經同期檢定直接併聯，事故！`);
-          changed();
-          return { ok: true, fault: true, msg: '非同期併聯事故' };
+          const msg = `聯鎖阻止：${el.id} 兩側是不同的帶電系統——DS 沒有同期檢定，不能用來併聯。正確程序：先開斷一側的 CB 使一側停電 → 投入本 DS → 最後以 CB 同期併聯。`;
+          pushLog('⚠ ' + msg);
+          return { ok: false, blocked: true, error: msg };
+        }
+        if (delta.length) {
+          const msg = `聯鎖阻止：投入 ${el.id} 會立即帶負載（受影響：${delta.join('、')}）。送電順序＝先投入 DS、再投入 CB——請先開斷下游 CB，投入本 DS 後再合 CB。`;
+          pushLog('⚠ ' + msg);
+          return { ok: false, blocked: true, error: msg };
         }
       }
       el.closed = !el.closed;
@@ -670,6 +675,15 @@ CF.Sub = (function () {
       pushLog(`${lbl} ${el.closed ? '投入 ●' : '開斷 ○'}（${el.closed ? '無載合閘' : '無電流／等電位開斷'} ✓）`);
       if (el.closed) postCloseEarthCheck(`投入 ${lbl}`);
     } else {
+      // CB：可帶載開閉；跨兩個帶電系統合閘＝經同期檢定（25）併聯
+      if (!el.closed) {
+        const uf = buildUF();
+        const live = liveSetOf(uf);
+        const fa = uf.find(el.a), fb = uf.find(el.b);
+        if (live.has(fa) && live.has(fb) && fa !== fb) {
+          pushLog(`${lbl} 同期檢定（25）通過後合閘——兩個帶電系統經 CB 併聯 ✓（併聯只能走 CB，不能走 DS）。`);
+        }
+      }
       el.closed = !el.closed;
       el.tripped = false;
       sheet(`${el.closed ? '投入' : '開斷'} ${lbl}`);
@@ -1192,7 +1206,7 @@ CF.Sub = (function () {
   function getPlan() {
     const name = st.sc ? st.sc.name : '—';
     const checks = [];
-    checks.push({ status: 'info', name: '操作規則', desc: 'CB 可帶載操作；DS 只能在無電流或等電位時操作；合 DS 於兩個不同帶電系統＝非同期併聯事故。' });
+    checks.push({ status: 'info', name: '操作規則', desc: 'CB 可帶載操作（跨帶電系統合閘＝同期併聯）；DS 帶載開斷＝弧光事故；錯誤的 DS 投入（帶載／併聯帶電系統）由聯鎖阻止並提示正確程序。' });
     if (st.sc && st.sc.task) checks.push({ status: st.taskDone ? 'pass' : 'info', name: '任務', desc: st.sc.task.text });
     if (st.sc && st.sc.elements.some(e => e.fault)) checks.push({ status: 'error', name: '設備損壞', desc: '有 DS 因不當操作弧光損壞——重新載入情境。' });
     if (st.sc && isCustom()) {
