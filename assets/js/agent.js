@@ -13,7 +13,8 @@
   const st = {
     open: false, busy: false,
     history: [],          // Gemini contents 格式
-    display: [],          // 畫面訊息 {who:'user'|'agent'|'tool', text}（IndexedDB 還原用）
+    display: [],          // 畫面訊息 {who:'user'|'agent'|'tool', text, img?}（IndexedDB 還原用，img 不入庫）
+    pendingImg: null,     // 待送出的照片 dataURL（已壓縮 JPEG）
     sdkPromise: null,
     els: {}
   };
@@ -25,9 +26,22 @@
     while (out.length && !(out[0].role === 'user' && out[0].parts && out[0].parts[0] && out[0].parts[0].text)) out.shift();
     return out;
   }
+  /* 照片不進持久層（base64 會灌爆 IndexedDB）：存檔時以文字占位符取代 */
+  function stripImages(history) {
+    return history.map(turn => ({
+      ...turn,
+      parts: (turn.parts || []).map(p => p.inlineData ? { text: '（此處原有一張使用者照片，已省略）' } : p)
+    }));
+  }
+  function serializeChat() {
+    return {
+      history: stripImages(trimHistory(st.history, 40)),
+      display: st.display.slice(-60).map(e => e.img ? { who: e.who, text: (e.text ? e.text + ' ' : '') + '[📷 照片]' } : e)
+    };
+  }
   function saveChat() {
     if (!window.CF || !CF.Store) return;
-    CF.Store.set('chat', { history: trimHistory(st.history, 40), display: st.display.slice(-60) });
+    CF.Store.set('chat', serializeChat());
   }
   async function restoreChat() {
     if (!window.CF || !CF.Store) return;
@@ -314,6 +328,43 @@
       description: '取得變電所單線圖現況：情境、任務與達成狀態、每台 CB/DS 的分合／跳脫／損壞、各饋線受電狀態、操作票與事件紀錄。變電所模式下回答問題或操作前先呼叫。',
       parameters: { type: 'object', properties: {} },
       run: () => { CF.App.setMode('sub'); return CF.Sub.status(); }
+    },
+    {
+      name: 'set_code_override',
+      description: '覆寫目前 MCU 方案的一個程式檔（main.cpp／config.h／platformio.ini）——用於實機除錯迴圈：使用者回報編譯錯誤或實機異常時，你修好後用這個工具寫回。content 必須是完整檔案內容（不是差異）。覆寫後匯出與匯出前檢查都用你的版本；使用者改需求重新生成方案時覆寫自動作廢。改完務必告訴使用者重新匯出燒錄。',
+      parameters: {
+        type: 'object',
+        properties: {
+          file_name: { type: 'string', description: 'main.cpp（預設）／config.h／platformio.ini' },
+          content: { type: 'string', description: '完整檔案內容' }
+        },
+        required: ['content']
+      },
+      run: a => CF.App.setCodeOverride(a.file_name || 'main.cpp', a.content)
+    },
+    {
+      name: 'clear_code_override',
+      description: '把被覆寫的程式檔還原成模板生成的版本。file_name 省略＝全部還原。',
+      parameters: { type: 'object', properties: { file_name: { type: 'string' } } },
+      run: a => CF.App.clearCodeOverride(a.file_name)
+    },
+    {
+      name: 'save_project',
+      description: '把目前整個工作區（方案、自由編輯接線、工業盤面、變電所、程式碼覆寫、對話）存成一個具名專案（存在使用者瀏覽器的 IndexedDB）。同名專案存在時會覆存進度。',
+      parameters: { type: 'object', properties: { name: { type: 'string', description: '專案名稱' } }, required: ['name'] },
+      run: a => CF.App.projSave(a.name)
+    },
+    {
+      name: 'list_projects',
+      description: '列出已儲存的專案（名稱與最後更新時間）以及目前開啟的專案。',
+      parameters: { type: 'object', properties: {} },
+      run: () => CF.App.projList()
+    },
+    {
+      name: 'load_project',
+      description: '載入一個已儲存的專案（以名稱指定，接受部分符合）。會覆蓋目前工作區的電路內容，但保留目前對話。破壞性操作——除非使用者明確要求載入，先確認。',
+      parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+      run: a => CF.App.projLoad(a.name)
     }
   ];
 
@@ -354,13 +405,18 @@
       '',
       '【電路常識】LED 必須串 220Ω 限流電阻；LDR/NTC 要與定值電阻分壓後接類比腳；電解電容「＋」接高電位、二極體 K 朝電源側做反接保護；模組電源腳旁可加 100nF 陶瓷電容去耦；水泵/大電流負載要經繼電器或 MOSFET，不可由 GPIO 直接驅動。不確定某元件細節時先呼叫 get_part_info。',
       '',
+      '【實機除錯迴圈（重要工作流）】使用者把程式燒到實體板子後，可能帶著「編譯錯誤訊息」「序列埠輸出」「實體接線照片」回來求助。流程：1) 先 get_code 看目前程式碼、get_state 看接線；2) 對照使用者提供的錯誤/照片診斷；3) 接線問題→用編輯工具修或指導；程式問題→修好後用 set_code_override 寫回【完整檔案內容】，並提醒重新匯出燒錄；4) 修過的檔案會標示「已修改」，clear_code_override 可還原模板。照片判讀原則：錯誤截圖、序列埠輸出、零件型號、明顯接錯（接反／錯排）可以直接判讀；但麵包板細部走線不可靠——不確定就說不確定，改用接線表（get_state）核對，切勿裝作看得清楚。',
+      '',
+      '【專案管理】save_project 把整個工作區（方案＋接線＋工業盤面＋變電所＋程式碼覆寫＋對話）存成具名專案；list_projects 列出；load_project 載入（會蓋掉目前電路，保留對話——屬破壞性操作，使用者明確要求才做）。專案存在使用者瀏覽器（IndexedDB），跨裝置要用畫面上「📁 專案」的匯出 .json。',
+      '',
       '【行為守則】',
       '1. 使用者要求的功能若能用上述元件組合實現，就用工具直接完成；若超出範圍（如 GPS、藍牙、4G、資料庫、螢幕觸控等），明確回答「目前的元件庫無法實現」並說明缺什麼，切勿硬做或假裝完成。',
       '2. 使用者「提問或請教」時：先簡短解釋，結尾問「需要我直接幫你做嗎？」，取得同意才動手。使用者下「明確指令」（幫我做／生成／加上／改成／測試）時直接動手，不再確認。',
       '3. 動手後用一兩句總結：方案標題、關鍵腳位、檢查是否全過；工具回傳的 checks 有 ERROR 時必須告知並給修法。',
       '4. 你看不到畫面；回答現況相關問題前先呼叫 get_state。',
       '5. 使用者在自由編輯途中求助時，優先用 editor_add_part／editor_remove_part 等小步驟工具幫忙，不要擅自 generate_plan 蓋掉他的作品；要整組重做前先確認。',
-      '6. 模擬通電失敗代表接線有誤，轉述失敗原因並提供修正建議。'
+      '6. 模擬通電失敗代表接線有誤，轉述失敗原因並提供修正建議。',
+      '7. 使用 set_code_override 時 content 一定是完整檔案（含原本沒改的部分），絕不能只給片段。'
     ].join('\n');
   }
 
@@ -410,14 +466,19 @@
   }
 
   /* ================= 對話迴圈 ================= */
-  async function send(userText) {
+  async function send(userText, imgDataUrl) {
     if (st.busy) return;
     if (!getKey()) { toggleSettings(true); note('請先輸入 Google API Key 啟用助手（金鑰只存在你的瀏覽器）。'); return; }
     st.busy = true;
     setBusyUi(true);
     st.history = trimHistory(st.history, 40);   // 記憶體內也修剪，避免長對話無限成長
-    addMsg('user', userText);
-    st.history.push({ role: 'user', parts: [{ text: userText }] });
+    addMsg('user', userText || '（請看照片）', imgDataUrl);
+    const parts = [{ text: userText || '請看這張照片。' }];
+    if (imgDataUrl) {
+      const m = imgDataUrl.match(/^data:(image\/\w+);base64,(.+)$/s);
+      if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } });
+    }
+    st.history.push({ role: 'user', parts });
     try {
       let rounds = 0;
       for (;;) {
@@ -459,6 +520,9 @@
       else if (String(code) === '400' && /api key/i.test(msg)) msg = 'API Key 無效，請檢查後重新輸入。';
       else if (String(code) === '503' || String(code) === '500') msg = '模型服務暫時無法回應，稍後再試。';
       else if (msg.length > 260) msg = msg.slice(0, 260) + '…';
+      if (imgDataUrl && (String(code) === '400' || /image|vision|modalit|multimodal/i.test(msg))) {
+        msg += '（目前選擇的模型可能不支援看照片——到 ⚙ 設定把模型換成 gemini-2.5-flash 再試一次。）';
+      }
       addMsg('agent', '⚠ ' + msg);
     } finally {
       st.busy = false;
@@ -510,9 +574,16 @@
   }
   const escT = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  function renderMsgDom(who, text) {
+  function renderMsgDom(who, text, img) {
     const el = h('div', 'ag-msg ag-' + who);
     el.innerHTML = escT(text).replace(/\n/g, '<br>');
+    if (img) {
+      const im = document.createElement('img');
+      im.className = 'ag-msgimg';
+      im.src = img;
+      im.alt = '附上的照片';
+      el.appendChild(im);
+    }
     st.els.msgs.appendChild(el);
     st.els.msgs.scrollTop = st.els.msgs.scrollHeight;
   }
@@ -521,9 +592,9 @@
     st.els.msgs.appendChild(el);
     st.els.msgs.scrollTop = st.els.msgs.scrollHeight;
   }
-  function addMsg(who, text) {
-    renderMsgDom(who, text);
-    st.display.push({ who, text });
+  function addMsg(who, text, img) {
+    renderMsgDom(who, text, img);
+    st.display.push(img ? { who, text, img } : { who, text });
     if (st.display.length > 80) st.display.shift();
   }
   function addToolChip(name) {
@@ -586,10 +657,17 @@
       </div>
       <div class="ag-msgs" data-msgs></div>
       <div class="ag-typing" data-typing hidden><span></span><span></span><span></span> 思考中</div>
+      <div class="ag-attach" data-attach hidden>
+        <img data-attimg alt="待送出的照片">
+        <span class="ag-attach-note">照片會隨下一則訊息送出（僅傳到你自己的 Google API）</span>
+        <button type="button" class="ag-icon" data-attx title="移除照片">✕</button>
+      </div>
       <div class="ag-inputrow">
+        <button type="button" class="ag-icon ag-clip" data-clip title="附上照片（拍實體接線、錯誤截圖）">📎</button>
         <textarea data-input rows="1" placeholder="例：幫我做一個土壤過乾自動澆水並回報的裝置"></textarea>
         <button type="button" data-send>送出</button>
-      </div>`;
+      </div>
+      <input type="file" data-file accept="image/*" hidden>`;
 
     document.body.appendChild(fab);
     document.body.appendChild(panel);
@@ -603,7 +681,10 @@
       settings: panel.querySelector('[data-settings]'),
       keyInput: panel.querySelector('[data-key]'),
       modelSel: panel.querySelector('[data-model]'),
-      modelTag: panel.querySelector('[data-modeltag]')
+      modelTag: panel.querySelector('[data-modeltag]'),
+      attach: panel.querySelector('[data-attach]'),
+      attImg: panel.querySelector('[data-attimg]'),
+      fileInput: panel.querySelector('[data-file]')
     };
     fillModels(DEFAULT_MODELS);
     st.els.modelTag.textContent = getModel();
@@ -647,11 +728,59 @@
       st.els.modelTag.textContent = st.els.modelSel.value;
     });
 
+    /* ---- 照片輸入：附圖按鈕／貼上／拖放，前端壓縮後隨訊息送出 ---- */
+    function setPendingImg(dataUrl) {
+      st.pendingImg = dataUrl;
+      st.els.attach.hidden = !dataUrl;
+      if (dataUrl) st.els.attImg.src = dataUrl;
+    }
+    function compressImage(file) {
+      return new Promise(resolve => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const MAX = 1024;
+          const k = Math.min(1, MAX / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(img.width * k));
+          c.height = Math.max(1, Math.round(img.height * k));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+    }
+    async function takeImageFile(file) {
+      if (!file || !/^image\//.test(file.type)) return;
+      const dataUrl = await compressImage(file);
+      if (dataUrl) setPendingImg(dataUrl);
+      else note('⚠ 這張圖片無法讀取，請換一張（JPG/PNG）。');
+    }
+    panel.querySelector('[data-clip]').addEventListener('click', () => st.els.fileInput.click());
+    st.els.fileInput.addEventListener('change', e => {
+      takeImageFile(e.target.files && e.target.files[0]);
+      e.target.value = '';
+    });
+    panel.querySelector('[data-attx]').addEventListener('click', () => setPendingImg(null));
+    st.els.input.addEventListener('paste', e => {
+      const item = [...(e.clipboardData && e.clipboardData.items || [])].find(i => /^image\//.test(i.type));
+      if (item) { e.preventDefault(); takeImageFile(item.getAsFile()); }
+    });
+    panel.addEventListener('dragover', e => { e.preventDefault(); });
+    panel.addEventListener('drop', e => {
+      e.preventDefault();
+      takeImageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+    });
+
     const doSend = () => {
       const v = st.els.input.value.trim();
-      if (!v || st.busy) return;
+      if ((!v && !st.pendingImg) || st.busy) return;
+      const img = st.pendingImg;
       st.els.input.value = '';
-      send(v);
+      setPendingImg(null);
+      send(v, img);
     };
     st.els.sendBtn.addEventListener('click', doSend);
     st.els.input.addEventListener('keydown', e => {
@@ -660,6 +789,34 @@
 
     restoreChat();   // 還原上次的對話紀錄（IndexedDB）
   }
+
+  /* ================= 對外（專案管理快照用） ================= */
+  CF.Agent = {
+    serialize: serializeChat,
+    restore(data) {
+      if (st.busy) return false;   // 進行中的對話不覆蓋
+      if (!data || typeof data !== 'object') return false;
+      st.history = Array.isArray(data.history) ? data.history : [];
+      st.display = Array.isArray(data.display) ? data.display : [];
+      if (st.els.msgs) {
+        st.els.msgs.innerHTML = '';
+        for (const e of st.display) {
+          if (e.who === 'tool') renderChipDom(e.text);
+          else renderMsgDom(e.who, e.text, e.img);
+        }
+      }
+      saveChat();
+      return true;
+    },
+    clear() {
+      if (st.busy) return false;
+      st.history = [];
+      st.display = [];
+      if (st.els.msgs) st.els.msgs.innerHTML = '';
+      if (window.CF && CF.Store) CF.Store.del('chat');
+      return true;
+    }
+  };
 
   document.addEventListener('DOMContentLoaded', buildUi);
 })();

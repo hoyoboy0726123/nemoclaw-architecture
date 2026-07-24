@@ -18,6 +18,8 @@
     subRefs: null,
     pinOverrides: {},         // `${partId}|${pinName}` → gpio（跨重整保留腳位修改）
     precheck: null,           // 匯出前 AI 檢查 {report, sig, title, model, when}
+    codeOverride: null,       // AI/實機除錯後的程式碼覆寫 {reqText, files:{name:content}}
+    projId: null, projName: null,   // 目前開啟的專案（另存/載入後記住）
     lastGenText: null,
     savedEditor: null,        // 開機時從 IndexedDB 載入的編輯器快照
     booted: false
@@ -27,7 +29,7 @@
   let persistTimer = null;
   function persistNow() {
     if (!state.booted || !window.CF.Store) return;
-    CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides });
+    CF.Store.set('app', { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides, codeOverride: state.codeOverride, projId: state.projId, projName: state.projName });
     if (state.editorInited) CF.Store.set('editor', CF.Editor.serialize());
     if (state.indInited) CF.Store.set('ind', CF.Ind.serialize());
     if (state.subInited) CF.Store.set('sub', CF.Sub.serialize());
@@ -195,10 +197,42 @@
     }
   }
 
+  /* ---------------- 程式碼覆寫（實機除錯迴圈：AI 修改後的檔案蓋過模板） ---------------- */
+  const OVERRIDABLE = ['main.cpp', 'config.h', 'platformio.ini'];
+  function applyCodeOverride(files) {
+    const ov = state.codeOverride;
+    // 需求語句一變＝方案重生，舊覆寫自動作廢（避免蓋掉新方案的程式碼）
+    if (!ov || ov.reqText !== state.reqText) return files;
+    return files.map(f => ov.files && ov.files[f.name] !== undefined ? { ...f, content: ov.files[f.name], overridden: true } : f);
+  }
+  function setCodeOverride(fileName, content) {
+    const plan = currentPlan();
+    if (!plan || plan.industrial) return { ok: false, error: '程式碼覆寫僅適用 MCU 方案（3D 檢視／自由編輯）' };
+    const name = String(fileName || 'main.cpp').trim();
+    if (!OVERRIDABLE.includes(name)) return { ok: false, error: `只能覆寫 ${OVERRIDABLE.join('、')}` };
+    if (typeof content !== 'string' || !content.trim()) return { ok: false, error: 'content 不可為空' };
+    if (content.length > 60000) return { ok: false, error: '檔案過大（上限 60000 字元）' };
+    if (!state.codeOverride || state.codeOverride.reqText !== state.reqText) state.codeOverride = { reqText: state.reqText, files: {} };
+    state.codeOverride.files[name] = content;
+    refreshAll();
+    return { ok: true, file: name, note: '已覆寫並標示「已修改（脫離模板）」；匯出與匯出前檢查都會使用覆寫版。改需求重新生成方案時覆寫會自動作廢。' };
+  }
+  function clearCodeOverride(fileName) {
+    if (!state.codeOverride) return { ok: true, note: '目前沒有覆寫' };
+    if (fileName) {
+      delete state.codeOverride.files[String(fileName).trim()];
+      if (!Object.keys(state.codeOverride.files).length) state.codeOverride = null;
+    } else {
+      state.codeOverride = null;
+    }
+    refreshAll();
+    return { ok: true };
+  }
+
   function refreshAll() {
     const plan = currentPlan();
     if (!plan) return;
-    state.files = plan.sub ? CF.Sub.genFiles() : plan.industrial ? CF.Ind.genFiles() : CF.genFiles(plan);
+    state.files = plan.sub ? CF.Sub.genFiles() : plan.industrial ? CF.Ind.genFiles() : applyCodeOverride(CF.genFiles(plan));
     if (state.activeFile >= state.files.length) state.activeFile = 0;
     renderStage(plan);
     renderCode();
@@ -319,13 +353,15 @@
     tabs.innerHTML = '';
     state.files.forEach((f, i) => {
       const b = document.createElement('button');
-      b.className = 'file-tab' + (i === state.activeFile ? ' active' : '');
-      b.textContent = f.name;
+      b.className = 'file-tab' + (i === state.activeFile ? ' active' : '') + (f.overridden ? ' overridden' : '');
+      b.textContent = (f.overridden ? '⚠ ' : '') + f.name;
+      b.title = f.overridden ? '已修改（脫離模板）——匯出用此版本' : f.name;
       b.addEventListener('click', () => { state.activeFile = i; renderCode(); });
       tabs.appendChild(b);
     });
     const f = state.files[state.activeFile];
-    $('#codeName').textContent = f.name;
+    $('#codeName').textContent = f.name + (f.overridden ? '　⚠ 已修改（脫離模板）' : '');
+    $('#codeRestoreBtn').hidden = !f.overridden;
     $('#codeView').innerHTML = (HL[f.lang] || esc)(f.content);
   }
 
@@ -1214,6 +1250,182 @@
     return { name: `${prefix}/檢查報告.md`, content };
   }
 
+  /* ---------------- 專案管理（多專案 IndexedDB 存取＋.json 匯出入） ---------------- */
+  const Proj = {
+    async list() { return (await CF.Store.get('projlist')) || []; },
+    async setList(list) { await CF.Store.set('projlist', list); },
+    snapshot() {
+      return {
+        v: 1,
+        app: { reqText: state.reqText, mode: state.mode, pinOverrides: state.pinOverrides, codeOverride: state.codeOverride },
+        editor: state.editorInited ? CF.Editor.serialize() : state.savedEditor,
+        ind: state.indInited ? CF.Ind.serialize() : state.savedInd,
+        sub: state.subInited ? CF.Sub.serialize() : state.savedSub,
+        chat: (window.CF.Agent && CF.Agent.serialize()) || null
+      };
+    },
+    validate(snap) {
+      return !!(snap && typeof snap === 'object' && snap.v === 1 && snap.app && typeof snap.app === 'object' && typeof snap.app.reqText === 'string');
+    },
+    async saveAs(name) {
+      name = String(name || '').trim().slice(0, 40) || '未命名專案';
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await CF.Store.set('proj:' + id, this.snapshot());
+      const list = await this.list();
+      list.unshift({ id, name, updated: Date.now() });
+      await this.setList(list.slice(0, 60));
+      state.projId = id; state.projName = name;
+      persist();
+      return { ok: true, id, name };
+    },
+    async overwrite(id) {
+      const list = await this.list();
+      const row = list.find(x => x.id === id);
+      if (!row) return { ok: false, error: '專案不存在' };
+      await CF.Store.set('proj:' + id, this.snapshot());
+      row.updated = Date.now();
+      await this.setList(list);
+      state.projId = id; state.projName = row.name;
+      persist();
+      return { ok: true, name: row.name };
+    },
+    async load(id, withChat) {
+      const snap = await CF.Store.get('proj:' + id);
+      if (!this.validate(snap)) return { ok: false, error: '專案資料損毀或不存在' };
+      const list = await this.list();
+      const row = list.find(x => x.id === id);
+      this.apply(snap, withChat !== false);
+      state.projId = id; state.projName = row ? row.name : null;
+      persist();
+      return { ok: true, name: state.projName };
+    },
+    apply(snap, withChat) {
+      state.reqText = snap.app.reqText;
+      state.lastGenText = snap.app.reqText;
+      state.pinOverrides = snap.app.pinOverrides && typeof snap.app.pinOverrides === 'object' ? snap.app.pinOverrides : {};
+      state.codeOverride = snap.app.codeOverride || null;
+      state.precheck = null;
+      generate();
+      if (state.editorInited) { if (snap.editor) CF.Editor.restore(snap.editor); else CF.Editor.clear(); }
+      else state.savedEditor = snap.editor || null;
+      if (state.indInited) { if (snap.ind) CF.Ind.restore(snap.ind); else CF.Ind.clear(); }
+      else state.savedInd = snap.ind || null;
+      if (state.subInited) { if (snap.sub) CF.Sub.restore(snap.sub); else CF.Sub.loadScenario('sub_basic'); }
+      else state.savedSub = snap.sub || null;
+      if (withChat && snap.chat && window.CF.Agent) CF.Agent.restore(snap.chat);
+      const m = ['view', 'edit', 'ind', 'sub'].includes(snap.app.mode) ? snap.app.mode : 'view';
+      if (state.mode === m) refreshAll(); else setMode(m);
+    },
+    async rename(id, name) {
+      const list = await this.list();
+      const row = list.find(x => x.id === id);
+      if (!row) return { ok: false, error: '專案不存在' };
+      row.name = String(name || '').trim().slice(0, 40) || row.name;
+      await this.setList(list);
+      if (state.projId === id) { state.projName = row.name; persist(); }
+      return { ok: true };
+    },
+    async remove(id) {
+      await CF.Store.del('proj:' + id);
+      await this.setList((await this.list()).filter(x => x.id !== id));
+      if (state.projId === id) { state.projId = null; state.projName = null; persist(); }
+      return { ok: true };
+    },
+    async duplicate(id) {
+      const snap = await CF.Store.get('proj:' + id);
+      if (!this.validate(snap)) return { ok: false, error: '專案資料損毀' };
+      const list = await this.list();
+      const row = list.find(x => x.id === id);
+      const nid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await CF.Store.set('proj:' + nid, snap);
+      list.unshift({ id: nid, name: ((row && row.name) || '專案') + '（複本）', updated: Date.now() });
+      await this.setList(list.slice(0, 60));
+      return { ok: true };
+    },
+    async exportJson(id) {
+      const snap = await CF.Store.get('proj:' + id);
+      if (!this.validate(snap)) return { ok: false, error: '專案資料損毀' };
+      const row = (await this.list()).find(x => x.id === id);
+      const name = (row && row.name) || '專案';
+      const blob = new Blob([JSON.stringify({ nemoclaw: 'project', name, exportedAt: new Date().toISOString(), snapshot: snap }, null, 1)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `nemoclaw-${name.replace(/[\\/:*?"<>|\s]+/g, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+      return { ok: true };
+    },
+    async importJson(text) {
+      let d;
+      try { d = JSON.parse(text); } catch (e) { return { ok: false, error: '不是合法的 JSON 檔' }; }
+      const snap = d && d.nemoclaw === 'project' ? d.snapshot : d;   // 也接受直接匯出的快照
+      if (!this.validate(snap)) return { ok: false, error: '不是 NemoClaw 專案檔（缺少必要欄位）' };
+      const name = ((d && d.name) || '匯入的專案') + '';
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await CF.Store.set('proj:' + id, snap);
+      const list = await this.list();
+      list.unshift({ id, name: name.slice(0, 40), updated: Date.now() });
+      await this.setList(list.slice(0, 60));
+      return { ok: true, id, name };
+    }
+  };
+
+  const fmtTime = t => new Date(t).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  async function renderProjModal() {
+    const cur = $('#projCur');
+    if (state.projId && state.projName) {
+      cur.hidden = false;
+      cur.innerHTML = `目前專案：<b>${esc(state.projName)}</b>　<button type="button" class="proj-act" data-act="overwrite" data-id="${esc(state.projId)}">💾 覆存目前進度</button>`;
+    } else {
+      cur.hidden = false;
+      cur.innerHTML = '目前工作區尚未存成專案（工作區本身會自動續存，但只有一份——想保留多個作品請「另存新專案」）。';
+    }
+    const host = $('#projList');
+    const list = await Proj.list();
+    host.innerHTML = list.length ? '' : '<div class="sim-note">還沒有專案。</div>';
+    for (const row of list) {
+      const el = document.createElement('div');
+      el.className = 'proj-row' + (row.id === state.projId ? ' cur' : '');
+      el.innerHTML = `<div class="proj-meta"><b>${esc(row.name)}</b><em>${fmtTime(row.updated)}</em></div>
+        <div class="proj-acts">
+          <button type="button" class="proj-act" data-act="load" data-id="${esc(row.id)}">📥 載入</button>
+          <button type="button" class="proj-act" data-act="overwrite" data-id="${esc(row.id)}">💾 覆存</button>
+          <button type="button" class="proj-act" data-act="rename" data-id="${esc(row.id)}">✏ 改名</button>
+          <button type="button" class="proj-act" data-act="duplicate" data-id="${esc(row.id)}">⧉ 複製</button>
+          <button type="button" class="proj-act" data-act="export" data-id="${esc(row.id)}">⬇ 匯出</button>
+          <button type="button" class="proj-act proj-del" data-act="remove" data-id="${esc(row.id)}">🗑</button>
+        </div>`;
+      host.appendChild(el);
+    }
+  }
+  async function projAction(act, id) {
+    if (act === 'load') {
+      if (!window.confirm('載入會覆蓋目前工作區（含對話紀錄）。尚未另存的變更會遺失，確定載入？')) return;
+      const r = await Proj.load(id, true);
+      if (!r.ok) window.alert(r.error);
+      else $('#projOverlay').hidden = true;
+      return;
+    }
+    if (act === 'overwrite') {
+      const r = await Proj.overwrite(id);
+      if (!r.ok) window.alert(r.error);
+    } else if (act === 'rename') {
+      const row = (await Proj.list()).find(x => x.id === id);
+      const name = window.prompt('新名稱：', row ? row.name : '');
+      if (name !== null) await Proj.rename(id, name);
+    } else if (act === 'duplicate') {
+      await Proj.duplicate(id);
+    } else if (act === 'export') {
+      const r = await Proj.exportJson(id);
+      if (!r.ok) window.alert(r.error);
+    } else if (act === 'remove') {
+      if (!window.confirm('刪除這個專案？（無法復原）')) return;
+      await Proj.remove(id);
+    }
+    renderProjModal();
+  }
+
   /* ---------------- 匯出 ---------------- */
   function exportProject() {
     const plan = currentPlan();
@@ -1264,7 +1476,42 @@
     $('#helpBtn').addEventListener('click', () => { $('#helpOverlay').hidden = false; });
     $('#helpClose').addEventListener('click', () => { $('#helpOverlay').hidden = true; });
     $('#helpOverlay').addEventListener('click', e => { if (e.target === $('#helpOverlay')) $('#helpOverlay').hidden = true; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#helpOverlay').hidden = true; $('#precheckOverlay').hidden = true; } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#helpOverlay').hidden = true; $('#precheckOverlay').hidden = true; $('#projOverlay').hidden = true; } });
+
+    // 專案管理
+    $('#projBtn').addEventListener('click', () => { $('#projOverlay').hidden = false; renderProjModal(); });
+    $('#projClose').addEventListener('click', () => { $('#projOverlay').hidden = true; });
+    $('#projOverlay').addEventListener('click', e => { if (e.target === $('#projOverlay')) $('#projOverlay').hidden = true; });
+    $('#projSaveAs').addEventListener('click', async () => {
+      const name = $('#projName').value.trim();
+      if (!name) { $('#projName').focus(); return; }
+      await Proj.saveAs(name);
+      $('#projName').value = '';
+      renderProjModal();
+    });
+    $('#projImportBtn').addEventListener('click', () => $('#projFile').click());
+    $('#projFile').addEventListener('change', async e => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const r = await Proj.importJson(await file.text());
+      if (!r.ok) window.alert('匯入失敗：' + r.error);
+      renderProjModal();
+    });
+    $('#projList').addEventListener('click', e => {
+      const b = e.target.closest('.proj-act');
+      if (b) projAction(b.dataset.act, b.dataset.id);
+    });
+    $('#projCur').addEventListener('click', e => {
+      const b = e.target.closest('.proj-act');
+      if (b) projAction(b.dataset.act, b.dataset.id);
+    });
+
+    // 程式碼覆寫還原
+    $('#codeRestoreBtn').addEventListener('click', () => {
+      const f = state.files[state.activeFile];
+      if (f && window.confirm(`把 ${f.name} 還原成模板生成的版本？（覆寫內容會消失）`)) clearCodeOverride(f.name);
+    });
 
     // 匯出前 AI 檢查
     $('#precheckBtn').addEventListener('click', () => runPrecheck(false));
@@ -1522,7 +1769,7 @@
       if (!free.includes(gpio)) return { ok: false, error: `${gpio} 不可用，可選：${free.join('、')}` };
       state.pinOverrides[`${net.partRef}|${net.pinName}`] = gpio;
       CF.reassignPin(state.plan, net.id, gpio);
-      state.files = CF.genFiles(state.plan);
+      state.files = applyCodeOverride(CF.genFiles(state.plan));
       CF.Board3D.setPlan(state.plan);
       renderTabsAll();
       persist();
@@ -1619,7 +1866,25 @@
       }
       return { ok: false, error: '未知動作' };
     },
-    exportProject() { exportProject(); return { ok: true, note: 'ZIP 已開始下載' }; }
+    exportProject() { exportProject(); return { ok: true, note: 'ZIP 已開始下載' }; },
+    setCodeOverride,
+    clearCodeOverride,
+    async projSave(name) {
+      // 有同名專案就覆存，否則另存——符合「幫我存檔」的直覺
+      const list = await Proj.list();
+      const hit = name && list.find(x => x.name === String(name).trim());
+      return hit ? Proj.overwrite(hit.id) : Proj.saveAs(name);
+    },
+    async projList() {
+      const list = await Proj.list();
+      return { current: state.projName, projects: list.map(x => ({ name: x.name, updated: new Date(x.updated).toISOString() })) };
+    },
+    async projLoad(name) {
+      const list = await Proj.list();
+      const hit = list.find(x => x.name === String(name || '').trim()) || list.find(x => x.name.includes(String(name || '').trim()));
+      if (!hit) return { ok: false, error: `找不到專案「${name}」。現有：${list.map(x => x.name).join('、') || '（無）'}` };
+      return Proj.load(hit.id, false);   // 工具載入不動對話（避免清掉進行中的討論）
+    }
   };
   function renderTabsAll() {
     renderCode();
@@ -1644,6 +1909,9 @@
         state.reqText = saved.reqText;
         state.pinOverrides = saved.pinOverrides || {};
         state.lastGenText = saved.reqText;   // 沿用需求文字，保留腳位覆寫
+        state.codeOverride = saved.codeOverride || null;
+        state.projId = saved.projId || null;
+        state.projName = saved.projName || null;
       }
       generate();
       if (saved && saved.mode === 'edit' && state.savedEditor) setMode('edit');
