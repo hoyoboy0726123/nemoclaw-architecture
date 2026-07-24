@@ -27,7 +27,9 @@ CF.Sub = (function () {
     timer: null,
     blink: false,
     zoom: 1, panX: 0, panY: 0, baseScale: 1, baseOx: 0, baseOy: 0, panDrag: null,
-    hover: null
+    hover: null,
+    builder: { tool: null, pendA: null, drag: null },   // 自由建構：放置工具／待定第一端／節點拖曳
+    counters: { n: 0, b: 0, d: {} }                     // 自由建構 id 流水號
   };
 
   /* ================= 情境庫 ================= */
@@ -308,9 +310,213 @@ CF.Sub = (function () {
     st.taskDone = false;
     st.everLost = {};
     st._prevF = null;   // 清掉上一情境的饋線狀態，避免誤記 everLost
+    st.builder.tool = null;
+    st.builder.pendA = null;
     pushLog(`載入情境【${full.name}】`);
     changed();
     return { ok: true, scenario: full.name };
+  }
+
+  /* ================= 自由建構（空白單線圖） ================= */
+  const clampX = x => Math.max(40, Math.min(LW - 40, Math.round(x)));
+  const clampY = y => Math.max(50, Math.min(LH - 70, Math.round(y)));
+
+  function buildStart() {
+    st.sc = {
+      id: 'custom', name: '自由建構單線圖',
+      desc: '空白單線圖：從工具列放電源、母線、CB／DS／變壓器、饋線，接好就能操作測試；注入故障看自動保護協調。',
+      task: null, faults: {}, nodes: {}, buses: [], elements: []
+    };
+    st.scId = 'custom';
+    st.sheet = []; st.log = []; st.fault = null; st.taskDone = false; st.everLost = {}; st._prevF = null;
+    st.counters = { n: 0, b: 0, d: {} };
+    st.builder.tool = null; st.builder.pendA = null; st.builder.drag = null;
+    pushLog('已開始自由建構——先放「電源」與「母線」，再用 DS／CB 把它們接起來。');
+    changed();
+    return { ok: true };
+  }
+  function recount() {
+    // 還原自由建構後，讓流水號接續既有 id，避免撞名
+    st.counters = { n: 0, b: 0, d: {} };
+    for (const id of Object.keys(st.sc.nodes)) { const m = id.match(/^n(\d+)$/); if (m) st.counters.n = Math.max(st.counters.n, +m[1]); }
+    for (const b of st.sc.buses) { const m = b.id.match(/^B(\d+)$/); if (m) st.counters.b = Math.max(st.counters.b, +m[1]); }
+    for (const el of st.sc.elements) { const m = el.id.match(/^([A-Z]+)-(\d+)$/); if (m) st.counters.d[m[1]] = Math.max(st.counters.d[m[1]] || 0, +m[2]); }
+  }
+  const isCustom = () => !!(st.sc && st.sc.id === 'custom');
+
+  function anchorAt(x, y) {
+    if (!st.sc) return { kind: 'new', x, y };
+    for (const b of st.sc.buses) if (Math.abs(y - b.y) < 14 && x >= b.x1 - 10 && x <= b.x2 + 10) return { kind: 'bus', id: b.id };
+    for (const [id, p] of Object.entries(st.sc.nodes)) if (Math.hypot(p[0] - x, p[1] - y) < 15) return { kind: 'node', id };
+    return { kind: 'new', x: clampX(x), y: clampY(y) };
+  }
+  function resolveAnchor(spec) {
+    if (spec == null) return null;
+    if (typeof spec === 'string') {
+      const s = spec.trim();
+      if (st.sc.buses.some(b => b.id === s)) return { kind: 'bus', id: s };
+      if (st.sc.nodes[s]) return { kind: 'node', id: s };
+      const m = s.match(/^(\d+)\s*,\s*(\d+)$/);
+      if (m) return anchorAt(+m[1], +m[2]);
+      return null;
+    }
+    if (spec.kind) return spec;
+    if (typeof spec.x === 'number' && typeof spec.y === 'number') return anchorAt(spec.x, spec.y);
+    return null;
+  }
+  function anchorNodeId(a) {
+    if (a.kind === 'bus' || a.kind === 'node') return a.id;
+    const id = 'n' + (++st.counters.n);
+    st.sc.nodes[id] = [clampX(a.x), clampY(a.y)];
+    return id;
+  }
+  function devId(prefix) {
+    st.counters.d[prefix] = (st.counters.d[prefix] || 0) + 1;
+    return `${prefix}-${st.counters.d[prefix]}`;
+  }
+
+  function buildAdd(kind, opts) {
+    if (!isCustom()) return { ok: false, error: '先開始「自由建構」（載入空白單線圖）才能放元件' };
+    opts = opts || {};
+    if (kind === 'bus') {
+      const id = 'B' + (++st.counters.b);
+      const y = clampY(opts.y ?? 270);
+      if (st.sc.buses.some(b => Math.abs(b.y - y) < 26)) return { ok: false, error: '離既有母線太近（垂直間隔至少 26）' };
+      st.sc.buses.push({ id, x1: 220, x2: 960, y, label: opts.label ? String(opts.label).slice(0, 16) : `${id} 母線` });
+      pushLog(`放置母線 ${id}`);
+      changed();
+      return { ok: true, id };
+    }
+    if (kind === 'src') {
+      const kv = ['345kV', '161kV', '11.4kV'].includes(opts.kv) ? opts.kv : '11.4kV';
+      const a = resolveAnchor(opts.at) || anchorAt(opts.x ?? 300, Math.min(opts.y ?? 70, 200));
+      if (a.kind === 'bus') return { ok: false, error: '電源請放在空白處，再用 DS 接到母線（實務：進線經隔離開關）' };
+      const nid = anchorNodeId(a);
+      if (st.sc.elements.some(e => e.type === 'src' && e.node === nid)) return { ok: false, error: '該節點已有電源' };
+      const id = devId('SRC');
+      st.sc.elements.push({ id, type: 'src', node: nid, label: `台電 ${kv}` });
+      pushLog(`放置電源 ${id}（${kv}）`);
+      changed();
+      return { ok: true, id, node: nid };
+    }
+    if (kind === 'feeder') {
+      const a = resolveAnchor(opts.at) || anchorAt(opts.x ?? 500, Math.max(opts.y ?? 430, 320));
+      if (a.kind === 'bus') return { ok: false, error: '饋線請放在空白處，再用 DS／CB 接到母線' };
+      const nid = anchorNodeId(a);
+      const id = devId('F');
+      const amps = Math.max(5, Math.min(600, Math.round(+opts.amps || 60)));
+      st.sc.elements.push({ id, type: 'feeder', node: nid, amps, label: opts.label ? String(opts.label).slice(0, 12) : `饋線${st.counters.d.F}` });
+      pushLog(`放置饋線 ${id}（${amps}A）`);
+      changed();
+      return { ok: true, id, node: nid };
+    }
+    if (kind === 'cb' || kind === 'ds' || kind === 'tx') {
+      const a = resolveAnchor(opts.a), b = resolveAnchor(opts.b);
+      if (!a || !b) return { ok: false, error: 'a／b 端點無法解析（可用母線 id、節點 id 或 "x,y" 座標）' };
+      const na = anchorNodeId(a), nb = anchorNodeId(b);
+      if (na === nb) return { ok: false, error: '兩端不能是同一點' };
+      if (st.sc.elements.some(e => (e.a === na && e.b === nb) || (e.a === nb && e.b === na))) return { ok: false, error: '這兩點之間已有設備' };
+      const prefix = kind === 'cb' ? 'CB' : kind === 'ds' ? 'DS' : 'TX';
+      const id = devId(prefix);
+      const el = { id, type: kind, a: na, b: nb, label: opts.label ? String(opts.label).slice(0, 12) : id };
+      if (kind !== 'tx') el.closed = false;   // 新裝設備一律開路（安全）
+      st.sc.elements.push(el);
+      pushLog(`放置 ${id}（${kind === 'cb' ? '斷路器' : kind === 'ds' ? '隔離開關' : '變壓器'}）`);
+      changed();
+      return { ok: true, id, a: na, b: nb };
+    }
+    return { ok: false, error: `未知元件「${kind}」。可用：bus、src、feeder、cb、ds、tx` };
+  }
+
+  function buildRemove(id) {
+    if (!isCustom()) return { ok: false, error: '僅自由建構模式可刪除' };
+    const bus = st.sc.buses.find(b => b.id === id);
+    if (bus) {
+      if (st.sc.elements.some(e => e.a === id || e.b === id)) return { ok: false, error: '先刪除接在這條母線上的設備' };
+      st.sc.buses = st.sc.buses.filter(b => b.id !== id);
+      pushLog(`移除母線 ${id}`);
+      cleanupNodes(); changed();
+      return { ok: true };
+    }
+    const el = elById(id);
+    if (!el) return { ok: false, error: `找不到「${id}」` };
+    st.sc.elements = st.sc.elements.filter(e => e.id !== id);
+    pushLog(`移除 ${id}`);
+    cleanupNodes(); changed();
+    return { ok: true };
+  }
+  function cleanupNodes() {
+    const used = new Set();
+    for (const el of st.sc.elements) { if (el.a) used.add(el.a); if (el.b) used.add(el.b); if (el.node) used.add(el.node); }
+    for (const id of Object.keys(st.sc.nodes)) if (!used.has(id)) delete st.sc.nodes[id];
+  }
+
+  function setBuildTool(tool) {
+    const T = ['src345', 'src161', 'src114', 'bus', 'cb', 'ds', 'tx', 'feeder', 'del', null];
+    if (!T.includes(tool)) tool = null;
+    st.builder.tool = tool;
+    st.builder.pendA = null;
+    render();
+    return { ok: true, tool };
+  }
+
+  function buildClick(x, y) {
+    const t = st.builder.tool;
+    if (t === 'bus') { buildAdd('bus', { y }); return; }
+    if (t === 'src345' || t === 'src161' || t === 'src114') {
+      buildAdd('src', { kv: t === 'src345' ? '345kV' : t === 'src161' ? '161kV' : '11.4kV', x, y });
+      return;
+    }
+    if (t === 'feeder') { buildAdd('feeder', { x, y }); return; }
+    if (t === 'del') {
+      const el = pick(x, y) || pickAny(x, y);
+      if (el) { const r = buildRemove(el.id); if (!r.ok) pushLog('⚠ ' + r.error); render(); }
+      return;
+    }
+    if (t === 'cb' || t === 'ds' || t === 'tx') {
+      const a = anchorAt(x, y);
+      if (!st.builder.pendA) { st.builder.pendA = a; render(); return; }
+      const r = buildAdd(t, { a: st.builder.pendA, b: a });
+      if (!r.ok) pushLog('⚠ ' + r.error);
+      st.builder.pendA = null;
+      render();
+    }
+  }
+  function pickAny(x, y) {
+    // 刪除工具用：除了 CB/DS/TX（pick 可撿），也要能點到電源、饋線與母線
+    for (const el of st.sc.elements) {
+      if (el.node) { const p = st.sc.nodes[el.node]; if (p && Math.hypot(p[0] - x, p[1] - y) < 22) return el; }
+      if (el.type === 'tx' && el.a) { const [mx, my] = midOf(el); if (Math.hypot(mx - x, my - y) < 16) return el; }
+    }
+    for (const b of st.sc.buses) if (Math.abs(y - b.y) < 12 && x >= b.x1 - 8 && x <= b.x2 + 8) return b;
+    return null;
+  }
+
+  /* 自動保護協調：由故障點出發，路徑上第一台閉合 CB＝主保護、第二台＝後備 */
+  function protectionLayers(fn) {
+    const adj = {};
+    const link = (a, b, el) => { (adj[a] = adj[a] || []).push({ o: b, el }); (adj[b] = adj[b] || []).push({ o: a, el }); };
+    for (const el of st.sc.elements) {
+      if (el.type === 'tx') link(el.a, el.b, el);
+      else if ((el.type === 'cb' || el.type === 'ds') && el.closed && !el.fault) link(el.a, el.b, el);
+    }
+    const best = new Map([[fn, 0]]);
+    const q = [[fn, 0]];
+    const L1 = new Set(), L2 = new Set();
+    while (q.length) {
+      const [n, c] = q.shift();
+      for (const { o, el } of (adj[n] || [])) {
+        let nc = c;
+        if (el.type === 'cb') {
+          if (c === 0) L1.add(el.id);
+          else if (c === 1) L2.add(el.id);
+          nc = c + 1;
+          if (nc >= 2) continue;
+        }
+        if ((best.get(o) ?? 9) > nc) { best.set(o, nc); q.push([o, nc]); }
+      }
+    }
+    return { L1: [...L1], L2: [...L2] };
   }
 
   /* ================= 連通與規則 ================= */
@@ -400,10 +606,26 @@ CF.Sub = (function () {
   /* ================= 故障與保護 ================= */
   function injectFault(target) {
     if (!st.sc) return { ok: false, error: '尚未載入情境' };
+    if (st.fault && !st.fault.cleared) return { ok: false, error: '已有故障進行中——先清除故障' };
+    if (isCustom()) {
+      // 自由建構：任何饋線或母線都能注入，主／後備保護自動判定
+      const el = elById(target);
+      const bus = st.sc.buses.find(b => b.id === target);
+      const key = (el && el.type === 'feeder') ? el.id : bus ? bus.id : null;
+      if (!key) {
+        const avail = [...st.sc.elements.filter(e => e.type === 'feeder').map(e => e.id), ...st.sc.buses.map(b => b.id)];
+        return { ok: false, error: `故障點需是饋線或母線${avail.length ? '：可用 ' + avail.join('、') : '（先放饋線／母線）'}` };
+      }
+      const label = el ? el.label : bus.label;
+      st.fault = { target: key, custom: true, cfg: { label }, t: 0, cleared: false, primaryFired: false, backupFired: false };
+      sheet(`⚡ ${label} 發生故障`);
+      pushLog(`⚡ ${label} 故障！最近的閉合 CB＝主保護（0.5s）、上一級＝後備（1.2s 越級）。`);
+      changed();
+      return { ok: true };
+    }
     const cfgs = st.sc.faults || {};
     const key = target || Object.keys(cfgs)[0];
     if (!key || !cfgs[key]) return { ok: false, error: `此情境沒有可注入的故障點${Object.keys(cfgs).length ? '：可用 ' + Object.keys(cfgs).join('、') : ''}` };
-    if (st.fault && !st.fault.cleared) return { ok: false, error: '已有故障進行中——先清除故障' };
     st.fault = { target: key, cfg: cfgs[key], t: 0, cleared: false, primaryFired: false, backupFired: false };
     sheet(`⚡ ${cfgs[key].label} 發生故障`);
     pushLog(`⚡ ${cfgs[key].label} 故障！保護啟動計時⋯`);
@@ -444,7 +666,37 @@ CF.Sub = (function () {
       const live = liveSetOf(uf);
       const fn = faultNodeOf(st.fault.target);
       const hot = fn && nodeLive(uf, live, fn);
-      if (hot) {
+      if (hot && st.fault.custom) {
+        // 自由建構：自動保護協調
+        st.fault.t += 0.3;
+        if (!st.fault.primaryFired && st.fault.t >= 0.5) {
+          st.fault.primaryFired = true;
+          const { L1 } = protectionLayers(fn);
+          for (const id of L1) {
+            const cb = elById(id);
+            if (!cb || !cb.closed) continue;
+            if (cb.defect) { pushLog(`${id} 收到跳脫令但【拒動】——等待後備保護⋯`); continue; }
+            cb.closed = false; cb.tripped = true;
+            sheet(`⚡ ${id} 主保護跳脫（0.5s）`);
+            pushLog(`${id} 主保護跳脫！⚡（最近的閉合 CB，t=0.5s）`);
+          }
+        }
+        if (!st.fault.backupFired && st.fault.t >= 1.2) {
+          const stillHot = (() => { const uf2 = buildUF(); return nodeLive(uf2, liveSetOf(uf2), fn); })();
+          if (stillHot) {
+            st.fault.backupFired = true;
+            const { L1, L2 } = protectionLayers(fn);
+            for (const id of [...L1, ...L2]) {
+              const cb = elById(id);
+              if (!cb || !cb.closed || cb.defect) continue;
+              cb.closed = false; cb.tripped = true;
+              const isBak = L2.includes(id);
+              sheet(`⚡ ${id} ${isBak ? '後備保護越級跳脫' : '保護跳脫'}（1.2s）`);
+              pushLog(`${id} ${isBak ? '後備保護越級跳脫！⚡——主保護拒動時上一級動作，停電範圍擴大。' : '保護跳脫！⚡（1.2s）'}`);
+            }
+          }
+        }
+      } else if (hot) {
         st.fault.t += 0.3;
         const { cfg } = st.fault;
         const prim = elById(cfg.primary);
@@ -655,6 +907,35 @@ CF.Sub = (function () {
       }
     }
 
+    // 自由建構：節點錨點與放置提示
+    if (isCustom()) {
+      for (const [id, p] of Object.entries(st.sc.nodes)) {
+        ctx.fillStyle = st.builder.drag === id ? '#0e7a6e' : 'rgba(60,70,80,.55)';
+        ctx.beginPath(); ctx.arc(p[0], p[1], 3.2, 0, Math.PI * 2); ctx.fill();
+      }
+      const pa = st.builder.pendA;
+      if (pa) {
+        let px = pa.x, py = pa.y;
+        if (pa.kind === 'node') { const p = st.sc.nodes[pa.id]; if (p) { px = p[0]; py = p[1]; } }
+        if (pa.kind === 'bus') { const b = st.sc.buses.find(x2 => x2.id === pa.id); if (b) { px = (b.x1 + b.x2) / 2; py = b.y; } }
+        if (px !== undefined) {
+          ctx.strokeStyle = '#0e7a6e'; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+      ctx.font = '700 13px "Noto Sans TC", sans-serif';
+      ctx.fillStyle = '#0e7a6e';
+      const t = st.builder.tool;
+      const toolTxt = t === 'bus' ? '點畫面放母線（點高度）'
+        : t === 'src345' || t === 'src161' || t === 'src114' ? '點空白處放電源'
+        : t === 'feeder' ? '點空白處放饋線'
+        : t === 'del' ? '點設備或母線刪除'
+        : (t === 'cb' || t === 'ds' || t === 'tx') ? (st.builder.pendA ? '再點第二端（母線／節點／空白）完成連接' : '點第一端（母線／節點／空白）')
+        : null;
+      ctx.fillText(`🏗 自由建構${toolTxt ? '：' + toolTxt : '——用上方工具列放置元件；點 CB/DS 可操作、拖節點可排版'}`, 24, LH - 22);
+      return;
+    }
+
     // 任務橫幅
     if (st.sc.task) {
       ctx.font = '700 13px "Noto Sans TC", sans-serif';
@@ -696,11 +977,23 @@ CF.Sub = (function () {
   }
   function onDown(e) {
     const [x, y] = toLogical(e);
+    if (isCustom() && st.builder.tool) { buildClick(x, y); return; }
     const el = pick(x, y);
     if (el) { operate(el.id); return; }
+    if (isCustom()) {
+      // 沒點到設備：靠近節點就進入節點拖曳（重新排版）
+      const hit = Object.entries(st.sc.nodes).find(([, p]) => Math.hypot(p[0] - x, p[1] - y) < 13);
+      if (hit) { st.builder.drag = hit[0]; return; }
+    }
     st.panDrag = { x: e.clientX, y: e.clientY };
   }
   function onMove(e) {
+    if (st.builder.drag) {
+      const [x, y] = toLogical(e);
+      st.sc.nodes[st.builder.drag] = [clampX(x), clampY(y)];
+      render();
+      return;
+    }
     if (st.panDrag) {
       const dx = e.clientX - st.panDrag.x, dy = e.clientY - st.panDrag.y;
       if (st.panDrag.on || Math.hypot(dx, dy) > 4) {
@@ -750,6 +1043,21 @@ CF.Sub = (function () {
     checks.push({ status: 'info', name: '操作規則', desc: 'CB 可帶載操作；DS 只能在無電流或等電位時操作；合 DS 於兩個不同帶電系統＝非同期併聯事故。' });
     if (st.sc && st.sc.task) checks.push({ status: st.taskDone ? 'pass' : 'info', name: '任務', desc: st.sc.task.text });
     if (st.sc && st.sc.elements.some(e => e.fault)) checks.push({ status: 'error', name: '設備損壞', desc: '有 DS 因不當操作弧光損壞——重新載入情境。' });
+    if (st.sc && isCustom()) {
+      const feeders = st.sc.elements.filter(e => e.type === 'feeder');
+      const srcs = st.sc.elements.filter(e => e.type === 'src');
+      if (!srcs.length) checks.push({ status: 'warn', name: '缺電源', desc: '還沒有電源——放一個「台電進線」才有電可送。' });
+      if (!feeders.length) checks.push({ status: 'info', name: '無饋線', desc: '放「饋線」代表負載端，任務就是把它送電。' });
+      else {
+        const uf = buildUF();
+        const live = liveSetOf(uf);
+        const dead = feeders.filter(f => !nodeLive(uf, live, f.node)).length;
+        checks.push(dead
+          ? { status: 'info', name: '饋線受電', desc: `${feeders.length - dead}/${feeders.length} 條饋線受電——依「先 DS 後 CB」順序把其餘送電。` }
+          : { status: 'pass', name: '饋線受電', desc: `全部 ${feeders.length} 條饋線受電。` });
+      }
+      checks.push({ status: 'info', name: '自動保護', desc: '注入故障時：離故障點最近的閉合 CB＝主保護（0.5s）、上一級＝後備（1.2s 越級）。' });
+    }
     return {
       industrial: true, sub: true,
       spec: { boardId: 'sub', conn: 'none', flags: {} },
@@ -800,6 +1108,14 @@ CF.Sub = (function () {
 
   function serialize() {
     if (!st.sc) return null;
+    if (isCustom()) {
+      return {
+        scId: 'custom',
+        def: JSON.parse(JSON.stringify({ nodes: st.sc.nodes, buses: st.sc.buses, elements: st.sc.elements })),
+        sheet: st.sheet.slice(-60),
+        everLost: st.everLost
+      };
+    }
     return {
       scId: st.scId,
       states: Object.fromEntries(st.sc.elements.filter(e => e.type === 'cb' || e.type === 'ds').map(e => [e.id, { closed: !!e.closed, fault: !!e.fault, defect: !!e.defect, tripped: !!e.tripped }])),
@@ -810,6 +1126,19 @@ CF.Sub = (function () {
   }
   function restore(d) {
     if (!d || !d.scId) return;
+    if (d.scId === 'custom') {
+      if (!d.def || typeof d.def !== 'object') return;
+      buildStart();
+      st.sc.nodes = d.def.nodes && typeof d.def.nodes === 'object' ? d.def.nodes : {};
+      st.sc.buses = Array.isArray(d.def.buses) ? d.def.buses : [];
+      st.sc.elements = Array.isArray(d.def.elements) ? d.def.elements : [];
+      recount();
+      st.sheet = Array.isArray(d.sheet) ? d.sheet.slice(-60) : [];
+      st.everLost = d.everLost && typeof d.everLost === 'object' ? d.everLost : {};
+      st._prevF = null;
+      changed();
+      return;
+    }
     const r = loadScenario(d.scId);
     if (!r.ok) return;
     if (d.states) for (const [id, s2] of Object.entries(d.states)) {
@@ -831,7 +1160,10 @@ CF.Sub = (function () {
       scenario: st.sc.name,
       task: st.sc.task ? { text: st.sc.task.text, done: st.taskDone } : null,
       fault: st.fault && !st.fault.cleared ? st.fault.cfg.label : null,
-      fault_targets: Object.keys(st.sc.faults || {}),
+      fault_targets: isCustom()
+        ? [...st.sc.elements.filter(e => e.type === 'feeder').map(e => e.id), ...st.sc.buses.map(b => b.id)]
+        : Object.keys(st.sc.faults || {}),
+      custom: isCustom() || undefined,
       switches: st.sc.elements.filter(e => e.type === 'cb' || e.type === 'ds').map(e => ({
         id: e.id, label: e.label, type: e.type.toUpperCase(),
         state: e.fault ? '弧光損壞' : e.tripped ? '跳脫' : e.closed ? '合' : '分',
@@ -853,9 +1185,9 @@ CF.Sub = (function () {
       st.onSim = hooks && hooks.onSim;
       canvas.addEventListener('pointerdown', onDown);
       canvas.addEventListener('pointermove', onMove);
-      canvas.addEventListener('pointerup', () => { st.panDrag = null; });
-      canvas.addEventListener('pointercancel', () => { st.panDrag = null; });
-      canvas.addEventListener('pointerleave', () => { st.panDrag = null; st.hover = null; });
+      canvas.addEventListener('pointerup', () => { if (st.builder.drag) { st.builder.drag = null; changed(); } st.panDrag = null; });
+      canvas.addEventListener('pointercancel', () => { st.builder.drag = null; st.panDrag = null; });
+      canvas.addEventListener('pointerleave', () => { if (st.builder.drag) { st.builder.drag = null; changed(); } st.panDrag = null; st.hover = null; });
       canvas.addEventListener('dblclick', onDbl);
       canvas.addEventListener('wheel', onWheel, { passive: false });
       if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas.parentElement);
@@ -864,6 +1196,10 @@ CF.Sub = (function () {
       if (!st.timer) st.timer = setInterval(tick, 300);
     },
     loadScenario, operate, injectFault, clearFault, toggleDefect,
+    buildStart, buildAdd, buildRemove, setBuildTool,
+    getBuildTool() { return st.builder.tool; },
+    isCustom,
+    viewInfo() { return { scale: st.scale, ox: st.ox, oy: st.oy }; },
     getPlan, genFiles, serialize, restore, status, resize,
     getLog() { return st.log; },
     getSheet() { return st.sheet; },

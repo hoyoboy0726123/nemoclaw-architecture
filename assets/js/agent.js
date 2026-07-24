@@ -330,6 +330,34 @@
       run: () => { CF.App.setMode('sub'); return CF.Sub.status(); }
     },
     {
+      name: 'sub_build',
+      description: '自由建構變電所單線圖（畫布 0–1180 × 0–560）。action=start 開空白圖；add_bus {y}；add_src {kv: "345kV"|"161kV"|"11.4kV", x, y}（放空白處，之後用 DS 接母線）；add_feeder {x, y, label, amps}；add_dev {dev_type: "cb"|"ds"|"tx", a, b}——a/b 可寫母線 id（B1）、節點 id（n3）或座標字串 "590,300"；remove {id}。新裝 CB/DS 一律開路，之後用 sub_operate 送電。故障注入用 sub_fault：主保護＝離故障點最近的閉合 CB（0.5s）、後備＝上一級（1.2s 越級），自動判定。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['start', 'add_bus', 'add_src', 'add_feeder', 'add_dev', 'remove'] },
+          y: { type: 'number' }, x: { type: 'number' },
+          kv: { type: 'string', enum: ['345kV', '161kV', '11.4kV'] },
+          dev_type: { type: 'string', enum: ['cb', 'ds', 'tx'] },
+          a: { type: 'string', description: '母線 id／節點 id／"x,y"' },
+          b: { type: 'string', description: '同上' },
+          id: { type: 'string', description: 'remove 用' },
+          label: { type: 'string' }, amps: { type: 'number' }
+        },
+        required: ['action']
+      },
+      run: a => {
+        CF.App.setMode('sub');
+        if (a.action === 'start') return CF.Sub.buildStart();
+        if (a.action === 'add_bus') return CF.Sub.buildAdd('bus', { y: a.y, label: a.label });
+        if (a.action === 'add_src') return CF.Sub.buildAdd('src', { kv: a.kv, x: a.x, y: a.y });
+        if (a.action === 'add_feeder') return CF.Sub.buildAdd('feeder', { x: a.x, y: a.y, label: a.label, amps: a.amps });
+        if (a.action === 'add_dev') return CF.Sub.buildAdd(a.dev_type, { a: a.a, b: a.b, label: a.label });
+        if (a.action === 'remove') return CF.Sub.buildRemove(String(a.id || '').trim());
+        return { ok: false, error: '未知動作' };
+      }
+    },
+    {
       name: 'set_code_override',
       description: '覆寫目前 MCU 方案的一個程式檔（main.cpp／config.h／platformio.ini）——用於實機除錯迴圈：使用者回報編譯錯誤或實機異常時，你修好後用這個工具寫回。content 必須是完整檔案內容（不是差異）。覆寫後匯出與匯出前檢查都用你的版本；使用者改需求重新生成方案時覆寫自動作廢。改完務必告訴使用者重新匯出燒錄。',
       parameters: {
@@ -399,7 +427,7 @@
       '接線鐵則：控制迴路從 C1（或 TX 的 S1）出發：STOP（b）串 START（a）串 MC 線圈 A1，A2 經 TH-RY 95-96 回 C2（或 S2）；自保持＝MC 13-14 並聯 START；正逆轉／Y-Δ 的兩顆 MC 線圈必須互串對方 21-22（電氣互鎖）。發電機絕不可與市電直接相連，必須經 ATS；受電盤的控制電源（TX）要取在 ATS 之後。',
       '【高壓受電（11.4kV，紫色端子 dom=hv）】HV-IN 進線（H1/H2/H3，可模擬台電停電）→ LA 避雷器（並聯）→ DS 隔離開關（1-6，只能無載操作！帶載開斷＝弧光事故）→ VCB 真空斷路器（1-6＋跳脫線圈 TC1/TC2）或 LBS＋PF 熔絲 → CT 比流器（串接＋k/l 訊號）→ TR-3φ 變壓器（一次 1/3/5 高壓、二次 2/4/6 低壓 380V，一次電流＝二次÷30）→ 低壓側照舊。RY51 反時限電驛：S1/S2←CT k/l、T1/T2→VCB TC1/TC2，始動電流（一次A）可調，越過載跳越快。PT 比壓器＝高壓版 TX（P1/P2 高壓→S1/S2 110V）。操作順序：送電 DS→VCB、停電 VCB→DS。特高壓：161kV（dom=ehv 藍）經 DS-161/GCB-161/CT-161→MTX-161 主變降 11.4kV；345kV（dom=uhv 紅）經 DS-345/GCB-345→MTX-345 聯絡主變降 161kV——可四級串級 345→161→11.4→380，電流逐級換算（÷變比），GCB 同樣有 TC1/TC2 跳脫線圈可接 RY51。【設備試驗】MEG 絕緣電阻（L→設備、E→GND，低壓≥1MΩ/高壓≥10MΩ）、HIPOT 耐壓（H→設備、R→GND，缺陷會閃絡）、CTT CT 變比極性（P1P2→CT 1/2、S1S2→k/l）、RTS 電驛注入（I1I2→RY S1S2，驗反時限曲線±10%）。規則：試驗必須停電進行、盤上有試驗器不可通電；ind_control 的 run_test 執行試驗、inject_defect 注入/清除教學缺陷（絕緣劣化/CT極性反/電驛遲緩）。工具：ind_load_preset 載入 55 個五區範例、ind_add_part／ind_wire 自由配線（「標籤:端子」如 MC1:13）、ind_control 通電操作（含 outage 模擬停電、set_param 調參數）、ind_status 看現況（含各元件可調參數）。接線後 ERC 有 error 必須修到通過才能通電。',
       '',
-      '【變電所單線圖模式（sub）】變電所運轉操作教學（抽象層級＝單線圖，一條線代表三相）。鐵則：CB 斷路器可帶載開閉；DS 隔離開關沒有滅弧能力，只能在「無電流」或「等電位（有並聯迴路，如母聯／環路）」時操作——帶載拉 DS＝弧光事故（設備損壞須重載情境）、合 DS 於兩個不同帶電系統＝非同期併聯事故。送電順序＝先合 DS 再合 CB，停電反向。故障演練：sub_fault inject 注入→主保護 CB 限時跳脫；先對主保護 CB 注入拒動（defect）再故障→後備保護越級跳脫（停電範圍擴大）＝保護協調。倒母線要領：先合母聯（等電位）→合目標側 DS→開原側 DS→開母聯，全程不斷電。工具：sub_load_scenario 載入 11 個情境、sub_operate 分合 CB/DS、sub_fault 故障/拒動、sub_status 看現況（含操作票）。每個情境有任務判定，操作全部自動記入操作票可匯出。',
+      '【變電所單線圖模式（sub）】變電所運轉操作教學（抽象層級＝單線圖，一條線代表三相）。鐵則：CB 斷路器可帶載開閉；DS 隔離開關沒有滅弧能力，只能在「無電流」或「等電位（有並聯迴路，如母聯／環路）」時操作——帶載拉 DS＝弧光事故（設備損壞須重載情境）、合 DS 於兩個不同帶電系統＝非同期併聯事故。送電順序＝先合 DS 再合 CB，停電反向。故障演練：sub_fault inject 注入→主保護 CB 限時跳脫；先對主保護 CB 注入拒動（defect）再故障→後備保護越級跳脫（停電範圍擴大）＝保護協調。倒母線要領：先合母聯（等電位）→合目標側 DS→開原側 DS→開母聯，全程不斷電。工具：sub_load_scenario 載入 11 個情境、sub_operate 分合 CB/DS、sub_fault 故障/拒動、sub_status 看現況（含操作票）、sub_build 自由建構（空白圖自己放電源/母線/CB/DS/變壓器/饋線——建構時故障保護自動判定：最近閉合 CB 0.5s 主保護、上一級 1.2s 後備越級）。每個情境有任務判定，操作全部自動記入操作票可匯出。',
       '',
       '【PLC】梯形圖模型：每階＝欄串聯（AND），每欄可疊 2 個接點（並聯 OR），線圈在最右。位址：X0-X7 輸入、Y0-Y7 輸出、M0-M7 內部繼電器、T0-T3 TON 計時器（秒）、C0-C3 CTU 計數器。自保持範式：(X0 OR Y0) AND X1 → OUT Y0（STOP 實體接 b 接點、程式用常開 X1）。用 plc_program 讀寫程式；盤面要有 plc 元件且 L/N 接 C1/C2 才會執行；輸出 Y 得電＝Y 端子與 C0 導通。匯出檔含 IEC 61131-3 ST（program.st）與 IO 對照表。',
       '',
