@@ -700,6 +700,41 @@ select, input, textarea { font-family: var(--mono); }
 .sim-cmd-row button { border: 0; background: var(--panel-2); color: var(--accent); font-weight: 700; font-size: 12px; padding: 0 16px; }
 .sim-note { font-family: var(--sans); font-size: 11.5px; color: var(--dim); line-height: 1.7; margin-top: 6px; }
 
+/* 即時通知 toast（浮在操作區上方） */
+#toastHost {
+  position: fixed;
+  top: 82px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(480px, calc(100vw - 40px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--border-2);
+  border-left-width: 4px;
+  box-shadow: 0 10px 28px rgba(40, 32, 16, .18);
+  color: var(--text-bright);
+  animation: toastIn .22s ease-out;
+}
+.toast-err { border-left-color: var(--red); background: #fdf1ee; }
+.toast-warn { border-left-color: var(--amber); background: #fdf8ec; }
+.toast-ok { border-left-color: var(--green); background: #eff8f2; }
+.toast-info { border-left-color: var(--accent); }
+.toast-out { opacity: 0; transform: translateY(-8px); transition: opacity .25s, transform .25s; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+
 /* 專案管理 */
 .proj-new { display: flex; gap: 8px; margin-bottom: 14px; }
 .proj-new input {

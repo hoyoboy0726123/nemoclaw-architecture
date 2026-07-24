@@ -837,7 +837,11 @@ CF.Sub = (function () {
   st.everLostMark = () => trackFeeders();
 
   function sheet(text) { st.sheet.push({ n: st.sheet.length + 1, text }); }
-  function pushLog(t) { st.log.push(t); if (st.log.length > 40) st.log.shift(); }
+  function pushLog(t) {
+    st.log.push(t);
+    if (st.log.length > 40) st.log.shift();
+    if (window.CF && CF.Toast) CF.Toast.fromLog(t);   // 事故／跳脫／完成即時浮現在操作區
+  }
 
   /* ================= 座標與繪製 ================= */
   function nodeXY(id) {
@@ -1081,7 +1085,11 @@ CF.Sub = (function () {
     const [x, y] = toLogical(e);
     if (isCustom() && st.builder.tool) { buildClick(x, y); return; }
     const el = pick(x, y);
-    if (el) { operate(el.id); return; }
+    if (el) {
+      const r = operate(el.id);
+      if (r && r.error && window.CF && CF.Toast) CF.Toast.push('warn', r.error);   // 操作被拒即時提示
+      return;
+    }
     if (isCustom()) {
       // 沒點到設備：靠近節點就進入節點拖曳（重新排版）
       const hit = Object.entries(st.sc.nodes).find(([, p]) => Math.hypot(p[0] - x, p[1] - y) < 13);

@@ -1231,6 +1231,7 @@ CF.Ind = (function () {
   function pushLog(text) {
     st.log.push(text);
     if (st.log.length > 30) st.log.shift();
+    if (window.CF && CF.Toast) CF.Toast.fromLog(text);   // 事故／跳脫即時浮現在操作區
   }
 
   function tick() {
