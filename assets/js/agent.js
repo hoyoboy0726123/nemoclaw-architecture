@@ -664,7 +664,7 @@
       </div>
       <div class="ag-inputrow">
         <button type="button" class="ag-icon ag-clip" data-clip title="附上照片（拍實體接線、錯誤截圖）">📎</button>
-        <textarea data-input rows="1" placeholder="例：幫我做一個土壤過乾自動澆水並回報的裝置"></textarea>
+        <textarea data-input rows="1" placeholder="例：幫我做一個煙霧警報器"></textarea>
         <button type="button" data-send>送出</button>
       </div>
       <input type="file" data-file accept="image/*" hidden>`;

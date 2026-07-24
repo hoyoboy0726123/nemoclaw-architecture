@@ -352,7 +352,7 @@ select, input, textarea { font-family: var(--mono); }
 .erc-badge { margin-left: auto; font-size: 11px; letter-spacing: .08em; font-weight: 700; padding: 6px 12px; border-radius: 999px; }
 .erc-ok { background: rgba(24, 138, 75, .12); color: var(--green); }
 .erc-bad { background: rgba(194, 64, 42, .12); color: var(--red); }
-.part-palette { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: flex-start; }
+.part-palette { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: flex-start; max-height: 128px; overflow-y: auto; }
 .pal-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pal-head {
   background: transparent;
@@ -421,16 +421,17 @@ select, input, textarea { font-family: var(--mono); }
 .stage-status {
   flex: none;
   display: grid;
-  grid-template-columns: minmax(180px, 1.3fr) 1fr 1fr 1.6fr;
+  grid-template-columns: minmax(170px, 1.2fr) .6fr .6fr minmax(180px, 1.8fr);
   border-top: 1px solid var(--border);
   margin-top: 16px;
   background: var(--panel);
 }
-.stat { padding: 13px 24px; border-right: 1px solid var(--border); }
+.stat { padding: 13px 16px; border-right: 1px solid var(--border); min-width: 0; }
 .stat:last-child { border-right: 0; }
 .stat-k { font-size: 10px; letter-spacing: .2em; color: var(--dim); margin-bottom: 4px; }
-.stat-v { font-size: 15px; color: var(--text-bright); letter-spacing: .06em; font-weight: 600; }
-.stat-done { display: flex; align-items: center; gap: 12px; font-family: var(--sans); font-size: 13.5px; color: var(--green); }
+.stat-v { font-size: 14px; color: var(--text-bright); letter-spacing: .04em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-done { display: flex; align-items: center; gap: 8px; font-family: var(--sans); font-size: 13px; color: var(--green); min-width: 0; white-space: nowrap; }
+.stat-done span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .stat-done.bad { color: var(--red); }
 .done-box {
   flex: none;
@@ -585,6 +586,8 @@ select, input, textarea { font-family: var(--mono); }
   font-size: 15px;
   letter-spacing: 2px;
   padding: 12px 26px;
+  white-space: nowrap;
+  flex: none;
 }
 .sim-power.off { background: var(--text-bright); }
 .sim-power:hover { filter: brightness(1.08); }

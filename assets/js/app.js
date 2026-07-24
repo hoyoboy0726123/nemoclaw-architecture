@@ -602,7 +602,7 @@
     con.className = 'sim-mqtt';
     con.innerHTML = `<div class="sim-log" data-log></div>` +
       (plan.conn === 'mqtt'
-        ? `<div class="sim-cmd-row"><input data-cmd placeholder="送出指令到 cmd 主題：on / off / open / close / 90"><button data-send type="button">發布</button></div>`
+        ? `<div class="sim-cmd-row"><input data-cmd placeholder="指令：on / off / open / close / 90"><button data-send type="button">發布</button></div>`
         : '');
     host.appendChild(con);
     refs.log = con.querySelector('[data-log]');
