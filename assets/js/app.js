@@ -17,6 +17,7 @@
     indRefs: null,
     subRefs: null,
     pinOverrides: {},         // `${partId}|${pinName}` → gpio（跨重整保留腳位修改）
+    precheck: null,           // 匯出前 AI 檢查 {report, sig, title, model, when}
     lastGenText: null,
     savedEditor: null,        // 開機時從 IndexedDB 載入的編輯器快照
     booted: false
@@ -1070,13 +1071,147 @@
       const data = await res.json();
       $('#groqResult').textContent = (data.choices && data.choices[0] && data.choices[0].message.content) || '（無回應）';
       $('#groqResult').hidden = false;
-      $('#docsMode').textContent = 'GROQ 動態分析';
+      $('#docsMode').textContent = 'AI 設計評析';
     } catch (err) {
-      $('#groqResult').textContent = 'GROQ 分析失敗：' + err.message + '，已保留內建規則說明。';
+      $('#groqResult').textContent = 'AI 設計評析失敗：' + err.message + '，已保留內建規則說明。';
       $('#groqResult').hidden = false;
     } finally {
-      btn.disabled = false; btn.textContent = 'GROQ 動態分析';
+      btn.disabled = false; btn.textContent = 'AI 設計評析';
     }
+  }
+
+  /* ---------------- 匯出前 AI 檢查（BYOK Gemini，簽核報告） ---------------- */
+  const MODE_LABEL = () => state.mode === 'sub' ? '變電所單線圖' : state.mode === 'ind' ? '工業配線' : state.mode === 'edit' ? '自由編輯' : '3D 檢視（自動生成）';
+  function filesSig() {
+    return state.mode + '|' + state.files.map(f => f.name + ':' + f.content.length).join('|');
+  }
+  const cut = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '\n…(截斷)' : s; };
+
+  function buildPrecheckPayload() {
+    const plan = currentPlan();
+    const checks = plan.checks.map(c => `[${c.status.toUpperCase()}] ${c.name}：${c.desc}`);
+    const fileOf = n => { const f = state.files.find(x => x.name === n); return f ? f.content : null; };
+    if (plan.sub) {
+      const s = CF.Sub.status();
+      return {
+        sections: ['1 操作票順序審查', '2 運轉風險', '3 操作前檢查清單', '4 預期結果'],
+        role: '你是變電所運轉值班主任，審查一份操作票。',
+        rules: 'CB 可帶載開閉；DS 只能在無電流或等電位時操作（帶載拉 DS＝弧光事故）；合 DS 於兩個不同帶電系統＝非同期併聯；送電先 DS 後 CB、停電反向；主保護先於後備保護。',
+        data: {
+          情境: s.scenario, 任務: s.task, 開關現況: s.switches, 饋線: s.feeders,
+          操作票全文: CF.Sub.getSheet().map(x => `${x.n}. ${x.text}`),
+          確定性檢查: checks
+        }
+      };
+    }
+    if (plan.industrial) {
+      return {
+        sections: ['1 迴路一致性', '2 保護整定與操作風險', '3 送電前檢查清單', '4 通電後預期行為'],
+        role: '你是配電盤竣工查驗技師，做送電前簽核。',
+        rules: '控制迴路 STOP(b)串START(a)串MC線圈、TH-RY 95-96 回 C2；正逆轉/Y-Δ 必須電氣互鎖；發電機必須經 ATS；DS 不可帶載操作；試驗必須停電進行。',
+        data: {
+          方案: plan.title, 電壓: plan.railV,
+          接線表: cut(fileOf('接線表.txt'), 5000),
+          元件表: cut(fileOf('元件表.txt'), 2500),
+          確定性檢查ERC: checks
+        }
+      };
+    }
+    return {
+      sections: ['1 接線與程式碼不一致', '2 編譯風險', '3 燒錄前檢查清單', '4 上電後預期行為'],
+      role: '你是嵌入式硬體審查員，做燒錄前簽核。',
+      rules: 'LED 串限流電阻；5V 元件不可接 3V3 邏輯輸入無準位轉換（本板已依規則配置）；大電流負載須經繼電器/MOSFET；I2C 需同一匯流排；腳位以接線表為準逐一核對程式碼 #define。',
+      data: {
+        方案: plan.title, 開發板: plan.board.name, 電源: plan.railV,
+        接線表: plan.nets.map(n => `${n.from} → ${n.to}`),
+        確定性檢查ERC: checks,
+        'main.cpp': cut(fileOf('main.cpp'), 7000),
+        'config.h': cut(fileOf('config.h'), 1500),
+        'platformio.ini': cut(fileOf('platformio.ini'), 1200)
+      }
+    };
+  }
+
+  function precheckPrompt(p) {
+    return [
+      p.role + ' 一律使用繁體中文、純文字（不用 markdown 符號）。',
+      '以下資料由系統自動彙整，其中「確定性檢查」是規則引擎已驗證過的結果——你的任務是【驗證與補充】，找出規則引擎抓不到的問題，不要重複它已列出的項目，也不要臆測資料中沒有的東西；沒有問題的段落明確寫「未發現問題」。',
+      '領域規則：' + p.rules,
+      '',
+      '固定輸出四段，每段以【' + p.sections.join('】【') + '】為標題，各段 1～6 條、每條一行：',
+      '',
+      '=== 資料 ===',
+      JSON.stringify(p.data, null, 1)
+    ].join('\n');
+  }
+
+  async function runPrecheck(force) {
+    const overlay = $('#precheckOverlay');
+    const statusEl = $('#precheckStatus');
+    const resultEl = $('#precheckResult');
+    overlay.hidden = false;
+    const key = localStorage.getItem('cf_gemini_key');
+    if (!key) {
+      statusEl.className = 'precheck-status err';
+      statusEl.textContent = '尚未設定 Google API Key——點右下角 🐾 助手 → ⚙ 設定貼上金鑰（aistudio.google.com 免費申請，金鑰只存在你的瀏覽器）。設定後回來按「重新檢查」。';
+      resultEl.hidden = true;
+      return;
+    }
+    const sig = filesSig();
+    // 已有針對目前版本的報告：直接顯示，不重打 API
+    if (!force && state.precheck && state.precheck.sig === sig) {
+      statusEl.className = 'precheck-status';
+      statusEl.textContent = `✓ 報告對應目前版本（${state.precheck.when}，模型 ${state.precheck.model}）——匯出 ZIP 會附上 檢查報告.md。AI 審查屬建議性質，請以 CHECKS 的確定性結果為準。`;
+      resultEl.textContent = state.precheck.report;
+      resultEl.hidden = false;
+      return;
+    }
+    const model = localStorage.getItem('cf_agent_model') || 'gemma-4-31b-it';
+    statusEl.className = 'precheck-status';
+    statusEl.textContent = `檢查中⋯（模型 ${model}，資料只送到你自己的 Google API）`;
+    resultEl.hidden = true;
+    const btn = $('#precheckBtn');
+    btn.disabled = true;
+    try {
+      const prompt = precheckPrompt(buildPrecheckPayload());
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] })
+      });
+      if (!res.ok) {
+        const msg = res.status === 400 || res.status === 403 ? '金鑰無效或沒有權限' :
+          res.status === 429 ? '額度已用完，稍後再試' :
+          res.status === 404 ? `模型 ${model} 不存在（到助手 ⚙ 換一個）` : 'HTTP ' + res.status;
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      const report = ((data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [])
+        .map(x => x.text || '').join('').trim();
+      if (!report) throw new Error('模型沒有回覆內容');
+      state.precheck = { report, sig, title: currentPlan().title, modeLabel: MODE_LABEL(), model, when: new Date().toLocaleString('zh-TW') };
+      statusEl.textContent = `✓ 檢查完成（${state.precheck.when}）——匯出 ZIP 會附上 檢查報告.md。AI 審查屬建議性質，請以 CHECKS 的確定性結果為準。`;
+      resultEl.textContent = report;
+      resultEl.hidden = false;
+    } catch (err) {
+      statusEl.className = 'precheck-status err';
+      statusEl.textContent = '檢查失敗：' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function precheckEntry(prefix) {
+    // 匯出 ZIP 附上檢查報告（僅當報告對應目前版本）
+    if (!state.precheck || state.precheck.sig !== filesSig()) return null;
+    const p = state.precheck;
+    const content = [
+      '# 匯出前 AI 檢查報告', '',
+      `- 方案：${p.title}`, `- 模式：${p.modeLabel}`, `- 模型：${p.model}`, `- 產生時間：${p.when}`, '',
+      '> 本報告由 AI 產生，屬審查建議、非執行驗證；接線／ERC 請以應用內 CHECKS 的確定性結果為準。', '',
+      p.report, ''
+    ].join('\n');
+    return { name: `${prefix}/檢查報告.md`, content };
   }
 
   /* ---------------- 匯出 ---------------- */
@@ -1084,6 +1219,8 @@
     const plan = currentPlan();
     if (plan.industrial) {
       const entries = state.files.map(f => ({ name: `nemoclaw-panel/${f.name}`, content: f.content }));
+      const rep = precheckEntry('nemoclaw-panel');
+      if (rep) entries.push(rep);
       const blob = CF.makeZip(entries);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -1111,6 +1248,8 @@
       if (f.name === 'config.h') path = 'include/config.h';
       entries.push({ name: `${slug}/${path}`, content: f.content });
     }
+    const rep = precheckEntry(slug);
+    if (rep) entries.push(rep);
     const blob = CF.makeZip(entries);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1125,7 +1264,13 @@
     $('#helpBtn').addEventListener('click', () => { $('#helpOverlay').hidden = false; });
     $('#helpClose').addEventListener('click', () => { $('#helpOverlay').hidden = true; });
     $('#helpOverlay').addEventListener('click', e => { if (e.target === $('#helpOverlay')) $('#helpOverlay').hidden = true; });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') $('#helpOverlay').hidden = true; });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#helpOverlay').hidden = true; $('#precheckOverlay').hidden = true; } });
+
+    // 匯出前 AI 檢查
+    $('#precheckBtn').addEventListener('click', () => runPrecheck(false));
+    $('#precheckRerun').addEventListener('click', () => runPrecheck(true));
+    $('#precheckClose').addEventListener('click', () => { $('#precheckOverlay').hidden = true; });
+    $('#precheckOverlay').addEventListener('click', e => { if (e.target === $('#precheckOverlay')) $('#precheckOverlay').hidden = true; });
 
     // 開機還原（IndexedDB await）完成前先不切模式，避免競態蓋掉已存檔的工作
     $('#modeViewBtn').addEventListener('click', () => { if (state.booted) setMode('view'); });

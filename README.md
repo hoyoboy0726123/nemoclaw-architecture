@@ -46,7 +46,8 @@
 - **CODE**：`main.cpp`（MQTT／HTTP REST／Web Server／ESP32-CAM 串流＋Teachable Machine）、`platformio.ini`、`config.h`、`circuit.json`
 - **WIRING**：接線網表；自動模式下訊號腳可下拉改 GPIO，全面同步
 - **CHECKS**：設計規則檢查（pass／warn／info／error 四級）
-- **說明**：元件選用理由與替代方案；可選接 Groq API 動態分析（金鑰僅存瀏覽器）
+- **說明**：元件選用理由與替代方案；可選接 Groq API「AI 設計評析」（金鑰僅存瀏覽器）
+- **匯出前 AI 檢查**：頂欄「🔍 匯出前檢查」——把接線表、ERC 結果、程式碼（或操作票）連同確定性檢查結論送到你自己的 Gemini API 做簽核審查，固定輸出四段（不一致點／風險／檢查清單／預期行為）；報告以 `檢查報告.md` 附進匯出 ZIP，電路變更後會標示過時。AI 審查屬建議性質，以 CHECKS 的確定性結果為準
 - **匯出專案**：一鍵下載完整 PlatformIO 專案 ZIP
 
 ## 專案結構
