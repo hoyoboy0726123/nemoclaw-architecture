@@ -859,10 +859,15 @@ CF.Editor = (function () {
     const fp = CF.FOOTPRINTS[partId];
     if (!def || !fp) return { ok: false, error: `未知元件 ${partId}` };
     const m = boardMeta();
-    const side = def.cls === 'SENSOR' && partId !== 'pir' ? 'top' : 'bottom';
-    let c0 = m.b0 + m.n + 3;
-    while (c0 < COLS - (fp.bodyW || fp.w) && overlaps(partId, c0, side)) c0++;
-    if (overlaps(partId, c0, side)) return { ok: false, error: '麵包板空間不足' };
+    const pref = def.cls === 'SENSOR' && partId !== 'pir' ? 'top' : 'bottom';
+    // 慣例側優先，滿了就退到另一側（否則明明有空位卻回報空間不足）
+    let side = null, c0 = 0;
+    for (const s of [pref, pref === 'top' ? 'bottom' : 'top']) {
+      let c = m.b0 + m.n + 3;
+      while (c < COLS - (fp.bodyW || fp.w) && overlaps(partId, c, s)) c++;
+      if (!overlaps(partId, c, s)) { side = s; c0 = c; break; }
+    }
+    if (!side) return { ok: false, error: '麵包板空間不足（兩側都放不下了，請先移除部分元件）' };
     const np = { uid: st.uidSeq++, id: partId, c0, side };
     if (def.cls === 'PASSIVE') { np.value = def.defaultValue; if (def.conduct === 'switch') np.closed = true; }
     st.parts.push(np);
