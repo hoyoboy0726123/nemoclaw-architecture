@@ -148,6 +148,7 @@
         <button class="edit-tool sub-tool" data-subtool="ds" type="button">DS 隔離開關</button>
         <button class="edit-tool sub-tool" data-subtool="tx" type="button">變壓器</button>
         <button class="edit-tool sub-tool" data-subtool="feeder" type="button">饋線</button>
+        <button class="edit-tool sub-tool" data-subtool="es" type="button">接地開關</button>
         <button class="edit-tool sub-tool" data-subtool="del" type="button">刪除</button>
       </div>
     </div>
@@ -356,7 +357,7 @@
         <li><b>倒母線要領（核心科目）</b>：先合母聯（兩條母線等電位）→ 合 B 側 DS → 開 A 側 DS（此時有並聯迴路，安全）→ 開母聯。全程不斷電，任務會即時判定。</li>
         <li><b>保護協調</b>：「⚡ 注入故障」→ 主保護 CB 限時跳脫、其餘照常供電；先對主保護 CB「💉 注入拒動」再故障 → 後備保護<b>越級跳脫</b>、停電範圍擴大——這就是主保護／後備保護的時間協調。</li>
         <li><b>操作票</b>：每一步操作（含事故）自動編號記錄，匯出含操作票 .txt、單線圖 .svg 與情境 JSON。</li>
-        <li><b>自由建構</b>：左欄「🏗 自由建構」或工具列開空白圖——選工具後點畫布放<b>電源／母線／饋線</b>；CB、DS、變壓器要<b>點兩端</b>（母線、節點或空白處）完成連接；「操作／排版」工具下可拖曳節點排版、點開關操作；「刪除」工具點設備移除。新裝開關一律開路，照「先 DS 後 CB」送電。注入故障時保護<b>自動協調</b>：離故障點最近的閉合 CB 0.5s 主保護跳脫、對它注入拒動則上一級 1.2s 越級。自建圖會自動續存，也能存進專案、匯出。</li>
+        <li><b>自由建構</b>：左欄「🏗 自由建構」或工具列開空白圖——選工具後點畫布放<b>電源／母線／饋線</b>；CB、DS、變壓器要<b>點兩端</b>（母線、節點或空白處）完成連接；<b>接地開關</b>點在節點或母線上。「操作／排版」工具下可拖曳節點排版、點開關操作、<b>雙擊</b>饋線／電源／變壓器／母線改名（饋線可改電流、母線可改範圍）；「刪除」工具點設備移除。新裝開關一律開路，照「先 DS 後 CB」送電。注入故障時保護<b>自動協調</b>：離故障點最近的閉合 CB 0.5s 主保護跳脫、對它注入拒動則上一級 1.2s 越級。檢修流程可以走完整套：<b>停電 → 隔離 → 掛接地</b>——帶電合地或掛地中送電都會如實發生接地短路、保護跳脫。自建圖會自動續存，也能存進專案、匯出。</li>
       </ol>
 
       <h4>匯出前 AI 檢查（頂欄 🔍）</h4>

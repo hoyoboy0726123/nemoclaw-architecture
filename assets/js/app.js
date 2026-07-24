@@ -964,7 +964,7 @@
     ops.className = 'sim-ev-row';
     host.appendChild(ops);
     for (const el of sc.elements) {
-      if (el.type !== 'cb' && el.type !== 'ds') continue;
+      if (el.type !== 'cb' && el.type !== 'ds' && el.type !== 'es') continue;
       const b = document.createElement('button');
       b.className = 'sim-ev'; b.type = 'button';
       b.dataset.sw = el.id;
@@ -1063,8 +1063,9 @@
     for (const b of refs.ops.querySelectorAll('[data-sw]')) {
       const sw = s.switches.find(x => x.id === b.dataset.sw);
       if (!sw) continue;
-      b.textContent = `${sw.state === '合' ? '●' : sw.state === '分' ? '○' : '⚡'} ${sw.id} ${sw.state}${sw.defect ? ' 💉' : ''}`;
-      b.disabled = sw.state === '弧光損壞';
+      const icon = sw.state === '掛地' ? '⏚' : sw.state === '合' ? '●' : (sw.state === '分' || sw.state === '未掛地') ? '○' : '⚡';
+      b.textContent = `${icon} ${sw.id} ${sw.state}${sw.defect ? ' 💉' : ''}`;
+      b.disabled = sw.state === '弧光損壞' || sw.state === '損壞';
     }
     const chips = s.feeders.map(f => `<div class="sim-out"><div class="k">${esc(f.label)}</div><div class="sim-chipval ${f.live ? 'on' : ''}">${f.live ? '受電 ●' : '停電 ○'}</div></div>`);
     if (s.fault) chips.push(`<div class="sim-out"><div class="k">故障中</div><div class="sim-chipval" style="color:var(--amber)">${esc(s.fault)} ⚡</div></div>`);

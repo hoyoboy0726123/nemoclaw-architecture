@@ -410,6 +410,21 @@ CF.Sub = (function () {
       changed();
       return { ok: true, id, node: nid };
     }
+    if (kind === 'es') {
+      const a = resolveAnchor(opts.at);
+      if (!a || a.kind === 'new') return { ok: false, error: '接地開關要掛在既有節點或母線上（先點到設備端點或母線）' };
+      if (st.sc.elements.some(e => e.type === 'es' && e.a === a.id)) return { ok: false, error: '該點已有接地開關' };
+      const id = devId('ES');
+      const el = { id, type: 'es', a: a.id, closed: false, label: id };
+      if (a.kind === 'bus') {
+        const b = st.sc.buses.find(x2 => x2.id === a.id);
+        el.x = clampX(opts.x ?? (b ? (b.x1 + b.x2) / 2 : 590));
+      }
+      st.sc.elements.push(el);
+      pushLog(`放置接地開關 ${id}（檢修掛地用——帶電合地＝短路事故）`);
+      changed();
+      return { ok: true, id };
+    }
     if (kind === 'cb' || kind === 'ds' || kind === 'tx') {
       const a = resolveAnchor(opts.a), b = resolveAnchor(opts.b);
       if (!a || !b) return { ok: false, error: 'a／b 端點無法解析（可用母線 id、節點 id 或 "x,y" 座標）' };
@@ -425,7 +440,33 @@ CF.Sub = (function () {
       changed();
       return { ok: true, id, a: na, b: nb };
     }
-    return { ok: false, error: `未知元件「${kind}」。可用：bus、src、feeder、cb、ds、tx` };
+    return { ok: false, error: `未知元件「${kind}」。可用：bus、src、feeder、cb、ds、tx、es` };
+  }
+
+  function esPos(el) {
+    const bus = st.sc.buses.find(b => b.id === el.a);
+    if (bus) return [el.x || (bus.x1 + bus.x2) / 2, bus.y + 32];
+    const p = st.sc.nodes[el.a];
+    return p ? [p[0] + 30, p[1] + 14] : null;
+  }
+  function esAnchorPt(el) {
+    const bus = st.sc.buses.find(b => b.id === el.a);
+    if (bus) return [el.x || (bus.x1 + bus.x2) / 2, bus.y];
+    return st.sc.nodes[el.a] || null;
+  }
+  /* 合上開關後檢查：是否對「掛著接地」的區段送了電＝接地短路 */
+  function postCloseEarthCheck(opLbl) {
+    if (!isCustom()) return false;
+    const uf = buildUF();
+    const live = liveSetOf(uf);
+    const es = st.sc.elements.find(e => e.type === 'es' && e.closed && !e.fault && nodeLive(uf, live, e.a));
+    if (!es) return false;
+    sheet(`✗ ${opLbl} —— 對掛接地的區段送電，接地短路！`);
+    pushLog(`⚡⚡ ${es.id} 還掛著接地就送電——接地短路事故！復電前必須先拆除全部接地。`);
+    if (!st.fault || st.fault.cleared) {
+      st.fault = { target: es.a, custom: true, cfg: { label: `接地短路（${es.id}）` }, t: 0, cleared: false, primaryFired: false, backupFired: false };
+    }
+    return true;
   }
 
   function buildRemove(id) {
@@ -452,7 +493,7 @@ CF.Sub = (function () {
   }
 
   function setBuildTool(tool) {
-    const T = ['src345', 'src161', 'src114', 'bus', 'cb', 'ds', 'tx', 'feeder', 'del', null];
+    const T = ['src345', 'src161', 'src114', 'bus', 'cb', 'ds', 'tx', 'feeder', 'es', 'del', null];
     if (!T.includes(tool)) tool = null;
     st.builder.tool = tool;
     st.builder.pendA = null;
@@ -468,6 +509,14 @@ CF.Sub = (function () {
       return;
     }
     if (t === 'feeder') { buildAdd('feeder', { x, y }); return; }
+    if (t === 'es') {
+      const a = anchorAt(x, y);
+      if (a.kind === 'new') { pushLog('⚠ 接地開關要點在既有節點或母線上'); render(); return; }
+      const r = buildAdd('es', { at: a, x });
+      if (!r.ok) pushLog('⚠ ' + r.error);
+      render();
+      return;
+    }
     if (t === 'del') {
       const el = pick(x, y) || pickAny(x, y);
       if (el) { const r = buildRemove(el.id); if (!r.ok) pushLog('⚠ ' + r.error); render(); }
@@ -560,8 +609,34 @@ CF.Sub = (function () {
     const el = elById(id) || st.sc.elements.find(e => e.label === id);
     if (!el) return { ok: false, error: `找不到設備「${id}」。可操作：${st.sc.elements.filter(e => e.type === 'cb' || e.type === 'ds').map(e => e.id).join('、')}` };
     if (el.type === 'src' || el.type === 'feeder' || el.type === 'tx') return { ok: false, error: `${el.label || el.id} 不是可操作的開關設備` };
-    if (el.fault) return { ok: false, error: `${el.id} 已弧光損壞——重新載入情境（實務上要更換設備）` };
+    if (el.fault) return { ok: false, error: `${el.id} 已因事故損壞——重新載入情境（實務上要更換設備）` };
     const lbl = `${el.id}（${el.label}）`;
+
+    if (el.type === 'es') {
+      if (!el.closed) {
+        const uf = buildUF();
+        const live = liveSetOf(uf);
+        if (nodeLive(uf, live, el.a)) {
+          el.fault = true;
+          sheet(`✗ 掛接地 ${lbl} —— 帶電合接地，短路事故！`);
+          pushLog(`⚡⚡ ${lbl} 帶電合接地——對帶電設備掛地＝直接短路！正確順序：停電 → 隔離 → 驗電 → 才掛接地。`);
+          if (!st.fault || st.fault.cleared) {
+            st.fault = { target: el.a, custom: true, cfg: { label: `接地短路（${el.id}）` }, t: 0, cleared: false, primaryFired: false, backupFired: false };
+          }
+          changed();
+          return { ok: true, fault: true, msg: '帶電合接地事故' };
+        }
+        el.closed = true;
+        sheet(`掛上接地 ${lbl}`);
+        pushLog(`${lbl} 掛上接地 ⏚（區段無電壓 ✓——檢修安全措施完成）`);
+      } else {
+        el.closed = false;
+        sheet(`拆除接地 ${lbl}`);
+        pushLog(`${lbl} 接地已拆除——復電前確認所有接地都已拆除。`);
+      }
+      changed();
+      return { ok: true, closed: el.closed };
+    }
 
     if (el.type === 'ds') {
       const wasClosed = !!el.closed;
@@ -593,11 +668,13 @@ CF.Sub = (function () {
       el.closed = !el.closed;
       sheet(`${el.closed ? '投入' : '開斷'} ${lbl}`);
       pushLog(`${lbl} ${el.closed ? '投入 ●' : '開斷 ○'}（${el.closed ? '無載合閘' : '無電流／等電位開斷'} ✓）`);
+      if (el.closed) postCloseEarthCheck(`投入 ${lbl}`);
     } else {
       el.closed = !el.closed;
       el.tripped = false;
       sheet(`${el.closed ? '投入' : '開斷'} ${lbl}`);
       pushLog(`${lbl} ${el.closed ? '投入 ●' : '開斷 ○'}`);
+      if (el.closed) postCloseEarthCheck(`投入 ${lbl}`);
     }
     changed();
     return { ok: true, closed: el.closed };
@@ -857,6 +934,25 @@ CF.Sub = (function () {
         ctx.textAlign = 'left';
         continue;
       }
+      if (el.type === 'es') {
+        const ap = esAnchorPt(el), pp = esPos(el);
+        if (!ap || !pp) continue;
+        ctx.strokeStyle = el.fault ? '#c2402a' : el.closed ? '#1f7a4d' : '#9aa2aa';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(ap[0], ap[1]);
+        if (el.closed || el.fault) ctx.lineTo(pp[0], pp[1]);          // 掛地：實線接通
+        else { ctx.lineTo((ap[0] + pp[0]) / 2 + 9, (ap[1] + pp[1]) / 2 - 5); ctx.moveTo(pp[0], pp[1] - 2); ctx.lineTo(pp[0], pp[1]); }   // 未掛：斜刀口
+        ctx.stroke();
+        // 接地符號（三橫線）
+        for (const [w, dy] of [[9, 0], [6, 4], [3, 8]]) {
+          ctx.beginPath(); ctx.moveTo(pp[0] - w, pp[1] + dy); ctx.lineTo(pp[0] + w, pp[1] + dy); ctx.stroke();
+        }
+        ctx.font = '10.5px "Noto Sans TC", sans-serif';
+        ctx.fillStyle = el.fault ? '#c2402a' : st.hover === el.id ? '#0e7a6e' : '#5a6067';
+        ctx.fillText(`${el.label}${el.fault ? ' ⚡短路' : el.closed ? ' ⏚掛地' : ''}`, pp[0] + 13, pp[1] + 6);
+        continue;
+      }
       // 線段類（cb/ds/tx）
       const [pa, pb] = segOf(el);
       if (!pa || !pb) continue;
@@ -929,6 +1025,7 @@ CF.Sub = (function () {
       const toolTxt = t === 'bus' ? '點畫面放母線（點高度）'
         : t === 'src345' || t === 'src161' || t === 'src114' ? '點空白處放電源'
         : t === 'feeder' ? '點空白處放饋線'
+        : t === 'es' ? '點節點或母線掛上接地開關'
         : t === 'del' ? '點設備或母線刪除'
         : (t === 'cb' || t === 'ds' || t === 'tx') ? (st.builder.pendA ? '再點第二端（母線／節點／空白）完成連接' : '點第一端（母線／節點／空白）')
         : null;
@@ -952,6 +1049,11 @@ CF.Sub = (function () {
   function pick(x, y) {
     if (!st.sc) return null;
     for (const el of st.sc.elements) {
+      if (el.type === 'es') {
+        const p = esPos(el);
+        if (p && Math.hypot(p[0] - x, p[1] - y) < 16) return el;
+        continue;
+      }
       if (el.type !== 'cb' && el.type !== 'ds') continue;
       const [mx, my] = midOf(el);
       if (Math.hypot(mx - x, my - y) < 16) return el;
@@ -1011,6 +1113,48 @@ CF.Sub = (function () {
   }
   function onDbl(e) {
     const [x, y] = toLogical(e);
+    if (isCustom()) {
+      // 雙擊饋線／電源：改名（饋線另可改負載電流）
+      for (const el of st.sc.elements) {
+        if (!el.node) continue;
+        const p = st.sc.nodes[el.node];
+        if (!p || Math.hypot(p[0] - x, p[1] - y) > 28) continue;
+        const name = window.prompt(`${el.id} 名稱：`, el.label);
+        if (name !== null && name.trim()) el.label = name.trim().slice(0, 12);
+        if (el.type === 'feeder') {
+          const a = window.prompt(`${el.id} 負載電流（5–600 A）：`, el.amps);
+          if (a !== null) { const v = Math.round(parseFloat(a)); if (isFinite(v)) el.amps = Math.max(5, Math.min(600, v)); }
+        }
+        changed();
+        return;
+      }
+      // 雙擊變壓器：改名（CB/DS 不用雙擊改名，避免與分合閘操作打架）
+      for (const el of st.sc.elements) {
+        if (el.type !== 'tx') continue;
+        const [mx, my] = midOf(el);
+        if (Math.hypot(mx - x, my - y) > 18) continue;
+        const name = window.prompt(`${el.id} 名稱：`, el.label);
+        if (name !== null && name.trim()) { el.label = name.trim().slice(0, 12); changed(); }
+        return;
+      }
+      // 雙擊母線：改名＋改範圍
+      const bus = st.sc.buses.find(b => Math.abs(y - b.y) < 12 && x >= b.x1 - 8 && x <= b.x2 + 8);
+      if (bus) {
+        const name = window.prompt(`${bus.id} 名稱：`, bus.label);
+        if (name !== null && name.trim()) bus.label = name.trim().slice(0, 16);
+        const span = window.prompt('母線範圍 x1,x2（40–1140）：', `${bus.x1},${bus.x2}`);
+        if (span !== null) {
+          const m = span.match(/^\s*(\d+)\s*[,，]\s*(\d+)\s*$/);
+          if (m) {
+            const a = Math.max(40, Math.min(1040, +m[1]));
+            bus.x1 = a;
+            bus.x2 = Math.max(a + 100, Math.min(1140, +m[2]));
+          }
+        }
+        changed();
+        return;
+      }
+    }
     if (!pick(x, y)) { st.zoom = 1; st.panX = 0; st.panY = 0; applyView(); }
   }
 
@@ -1095,6 +1239,11 @@ CF.Sub = (function () {
     for (const el of st.sc.elements) {
       if (el.type === 'src') { const [x, y] = st.sc.nodes[el.node]; el2.push(`<text x="${x}" y="${y - 38}" font-size="12" text-anchor="middle" fill="#7a2a45">${esc(el.label)}</text><line x1="${x}" y1="${y - 30}" x2="${x}" y2="${y}" stroke="#c2402a" stroke-width="3"/>`); continue; }
       if (el.type === 'feeder') { const [x, y] = st.sc.nodes[el.node]; el2.push(`<line x1="${x}" y1="${y}" x2="${x}" y2="${y + 30}" stroke="${col(el.node)}" stroke-width="3"/><text x="${x}" y="${y + 50}" font-size="12" text-anchor="middle" fill="#5a6067">${esc(el.label)}</text>`); continue; }
+      if (el.type === 'es') {
+        const ap = esAnchorPt(el), pp = esPos(el);
+        if (ap && pp) el2.push(`<line x1="${ap[0]}" y1="${ap[1]}" x2="${pp[0]}" y2="${pp[1]}" stroke="${el.closed ? '#1f7a4d' : '#9aa2aa'}" stroke-width="2.5"${el.closed ? '' : ' stroke-dasharray="4 3"'}/><line x1="${pp[0] - 9}" y1="${pp[1]}" x2="${pp[0] + 9}" y2="${pp[1]}" stroke="#3b4046" stroke-width="2.5"/><text x="${pp[0] + 12}" y="${pp[1] + 5}" font-size="10.5" fill="#5a6067">${esc(el.label)}${el.closed ? ' ⏚' : ''}</text>`);
+        continue;
+      }
       const [pa, pb] = segOf(el);
       if (!pa || !pb) continue;
       const [mx, my] = midOf(el);
@@ -1164,9 +1313,11 @@ CF.Sub = (function () {
         ? [...st.sc.elements.filter(e => e.type === 'feeder').map(e => e.id), ...st.sc.buses.map(b => b.id)]
         : Object.keys(st.sc.faults || {}),
       custom: isCustom() || undefined,
-      switches: st.sc.elements.filter(e => e.type === 'cb' || e.type === 'ds').map(e => ({
+      switches: st.sc.elements.filter(e => e.type === 'cb' || e.type === 'ds' || e.type === 'es').map(e => ({
         id: e.id, label: e.label, type: e.type.toUpperCase(),
-        state: e.fault ? '弧光損壞' : e.tripped ? '跳脫' : e.closed ? '合' : '分',
+        state: e.type === 'es'
+          ? (e.fault ? '損壞' : e.closed ? '掛地' : '未掛地')
+          : (e.fault ? '弧光損壞' : e.tripped ? '跳脫' : e.closed ? '合' : '分'),
         defect: !!e.defect
       })),
       feeders: st.sc.elements.filter(e => e.type === 'feeder').map(e => ({ id: e.id, label: e.label, live: nodeLive(uf, live, e.node) })),
