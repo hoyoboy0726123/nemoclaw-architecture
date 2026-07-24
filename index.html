@@ -29,6 +29,7 @@
   </div>
   <div class="engine-status"><span class="dot dot-green"></span>LAB ENGINE <b>READY</b></div>
   <div class="topbar-actions">
+    <button id="projBtn" class="precheck-btn" type="button">📁 專案</button>
     <button id="precheckBtn" class="precheck-btn" type="button">🔍 匯出前檢查</button>
     <button id="exportBtn" class="export-btn" type="button">匯出專案 <span class="arrow">↓</span></button>
   </div>
@@ -186,7 +187,10 @@
       <div id="fileTabs" class="file-tabs"></div>
       <div class="code-head">
         <span id="codeName" class="code-name">main.cpp</span>
-        <button id="copyBtn" class="copy-btn" type="button">複製</button>
+        <span class="code-head-actions">
+          <button id="codeRestoreBtn" class="copy-btn code-restore" type="button" hidden>↺ 還原模板</button>
+          <button id="copyBtn" class="copy-btn" type="button">複製</button>
+        </span>
       </div>
       <pre id="codeView" class="code-view"></pre>
     </div>
@@ -241,6 +245,27 @@
   </aside>
 
 </main>
+
+<!-- 專案管理 -->
+<div id="projOverlay" class="help-overlay" hidden>
+  <div class="help-modal">
+    <div class="help-head">
+      <span>📁 專案管理</span>
+      <button id="projClose" class="ag-icon" type="button">✕</button>
+    </div>
+    <div class="help-body">
+      <p class="help-dim">專案存在這台瀏覽器的 IndexedDB——換電腦或清除瀏覽器資料就沒了；要備份或交作業請用「匯出 .json」，對方用「匯入」開啟。</p>
+      <div class="proj-new">
+        <input id="projName" type="text" placeholder="專案名稱（例：三年甲班-溫濕度警報）" maxlength="40">
+        <button id="projSaveAs" type="button">💾 另存新專案</button>
+        <button id="projImportBtn" type="button">📂 匯入 .json</button>
+        <input id="projFile" type="file" accept=".json,application/json" hidden>
+      </div>
+      <div id="projCur" class="proj-cur" hidden></div>
+      <div id="projList" class="proj-list"></div>
+    </div>
+  </div>
+</div>
 
 <!-- 匯出前 AI 檢查 -->
 <div id="precheckOverlay" class="help-overlay" hidden>
@@ -318,6 +343,17 @@
       <h4>匯出前 AI 檢查（頂欄 🔍）</h4>
       <p>匯出燒錄（或送電）前的最後一道簽核：按頂欄「<b>🔍 匯出前檢查</b>」，系統會把接線表、ERC 結果、程式碼（工業模式＝接線表＋元件表；變電所模式＝操作票）連同確定性檢查結論，送到<b>你自己的 Google API Key</b>（和 AI 助手共用同一把）做審查，固定回覆四段：不一致點、風險、檢查清單、預期行為。報告會以 <b>檢查報告.md</b> 附進匯出 ZIP；電路改過之後舊報告會標示過時，重按即可更新。</p>
       <p class="help-dim">AI 審查屬建議性質——它是第二雙眼睛，不是執行驗證；接線對錯請以 CHECKS 分頁的確定性結果為準。</p>
+
+      <h4>專案管理（頂欄 📁）</h4>
+      <p>整個工作區（方案、自由編輯接線、工業盤面、變電所、程式碼修改、助手對話）可以「<b>另存新專案</b>」保存多份作品，隨時載入繼續改；也能覆存、改名、複製、刪除。<b>專案存在這台瀏覽器裡</b>——要備份、交作業或換電腦，用「⬇ 匯出」產生 .json 專案檔，對方按「📂 匯入」開啟。</p>
+
+      <h4>燒錄後有問題？實機除錯迴圈</h4>
+      <ol>
+        <li><b>把證據帶回來</b>：編譯錯誤訊息、序列埠輸出直接貼進助手對話；實體接線或錯誤畫面用 📎 <b>拍照傳給助手</b>（也可 Ctrl+V 貼上截圖或直接拖進來；照片會先壓縮，只送到你自己的 Google API）。</li>
+        <li><b>助手診斷並動手修</b>：接線問題會指出哪支腳；程式問題助手會直接改 main.cpp——改過的檔案在 CODE 分頁標示「<b>⚠ 已修改</b>」，匯出的 ZIP 用的就是修正版。</li>
+        <li><b>重新匯出燒錄</b>：驗證 OK 記得「📁 另存專案」保存成果；想回到原始模板按「↺ 還原模板」。改需求重新生成方案時，舊的程式修改會自動作廢以免蓋錯。</li>
+      </ol>
+      <p class="help-dim">照片判讀的極限：錯誤截圖、零件型號、明顯接錯看得出來；麵包板細部走線請以 WIRING/CHECKS 的接線表核對為準。</p>
 
       <h4>讓 AI 助手幫你做（右下角 <span class="help-claw">🐾</span> 按鈕）</h4>
       <p>第一次使用：點對話框右上 ⚙，貼上 Google API Key（<b>aistudio.google.com</b> 免費申請，金鑰只存在你的瀏覽器）。</p>
