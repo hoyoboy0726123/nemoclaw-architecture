@@ -264,6 +264,7 @@
     $('#viewToolbar').hidden = mode !== 'view';
     $('#editToolbar').hidden = mode !== 'edit';
     $('#indToolbar').hidden = mode !== 'ind';
+    $('#subToolbar').hidden = mode !== 'sub';
     $('#leftMcu').hidden = mode === 'ind' || mode === 'sub';
     $('#leftInd').hidden = mode !== 'ind';
     $('#leftSub').hidden = mode !== 'sub';
@@ -973,25 +974,32 @@
     }
     const rl = document.createElement('button');
     rl.className = 'sim-ev'; rl.type = 'button';
-    rl.textContent = '↺ 重載情境';
-    rl.addEventListener('click', () => CF.Sub.loadScenario(sc.id));
+    rl.textContent = CF.Sub.isCustom() ? '🗑 清空重建' : '↺ 重載情境';
+    rl.addEventListener('click', () => {
+      if (CF.Sub.isCustom()) { if (window.confirm('清空自由建構的單線圖？')) CF.Sub.buildStart(); }
+      else CF.Sub.loadScenario(sc.id);
+    });
     ops.appendChild(rl);
     refs.ops = ops;
 
-    const fkeys = Object.keys(sc.faults || {});
-    if (fkeys.length) {
+    const custom = CF.Sub.isCustom();
+    const targets = custom
+      ? [...sc.elements.filter(e => e.type === 'feeder').map(e => ({ k: e.id, label: e.label })),
+         ...sc.buses.map(b2 => ({ k: b2.id, label: b2.label }))]
+      : Object.keys(sc.faults || {}).map(k => ({ k, label: sc.faults[k].label }));
+    if (targets.length) {
       const fSec = document.createElement('div');
       fSec.className = 'sim-sec';
-      fSec.textContent = 'FAULT / 故障與保護演練';
+      fSec.textContent = custom ? 'FAULT / 故障演練（自動保護：最近 CB 0.5s、上一級 1.2s 越級）' : 'FAULT / 故障與保護演練';
       host.appendChild(fSec);
       const fRow = document.createElement('div');
       fRow.className = 'sim-ev-row';
       host.appendChild(fRow);
-      for (const k of fkeys) {
+      for (const t of targets) {
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
-        b.textContent = `⚡ ${sc.faults[k].label} 故障`;
-        b.addEventListener('click', () => { const r = CF.Sub.injectFault(k); if (!r.ok) window.alert(r.error); });
+        b.textContent = `⚡ ${t.label} 故障`;
+        b.addEventListener('click', () => { const r = CF.Sub.injectFault(t.k); if (!r.ok) window.alert(r.error); });
         fRow.appendChild(b);
       }
       const cbtn = document.createElement('button');
@@ -999,8 +1007,9 @@
       cbtn.textContent = '🔧 清除故障（修復完成）';
       cbtn.addEventListener('click', () => { const r = CF.Sub.clearFault(); if (!r.ok) window.alert(r.error); });
       fRow.appendChild(cbtn);
-      const dset = new Set();
-      for (const k of fkeys) if (sc.faults[k].primary) dset.add(sc.faults[k].primary);
+      const dset = custom
+        ? sc.elements.filter(e => e.type === 'cb').map(e => e.id)
+        : [...new Set(Object.keys(sc.faults || {}).map(k => sc.faults[k].primary).filter(Boolean))];
       for (const id of dset) {
         const b = document.createElement('button');
         b.className = 'sim-ev'; b.type = 'button';
@@ -1049,7 +1058,7 @@
     const s = CF.Sub.status();
     if (!s.scenario) return;
     $('#simStatus').textContent = s.task && s.task.done ? 'TASK ✓' : s.fault ? 'FAULT ⚡' : 'OPERATING';
-    refs.task.textContent = s.task ? `${s.task.done ? '✅ 任務完成' : '🎯 任務'}：${s.task.text}` : '（自由操作）';
+    refs.task.textContent = s.task ? `${s.task.done ? '✅ 任務完成' : '🎯 任務'}：${s.task.text}` : '🏗 自由建構——接好電路後點開關送電測試；注入故障看自動保護協調。';
     refs.task.classList.toggle('done', !!(s.task && s.task.done));
     for (const b of refs.ops.querySelectorAll('[data-sw]')) {
       const sw = s.switches.find(x => x.id === b.dataset.sw);
@@ -1572,8 +1581,43 @@
       ipHost.appendChild(g);
     }
 
+    // 變電所：自由建構工具列
+    const updateSubTools = () => {
+      const cur = CF.Sub.getBuildTool() || '';
+      document.querySelectorAll('.sub-tool').forEach(b => b.classList.toggle('active', b.dataset.subtool === cur && CF.Sub.isCustom()));
+    };
+    const enterSubBuild = () => {
+      if (!CF.Sub.isCustom()) {
+        if (CF.Sub.getSheet().length && !window.confirm('開始自由建構會離開目前情境（情境隨時可從左欄重載）。繼續？')) return false;
+        CF.Sub.buildStart();
+      }
+      return true;
+    };
+    $('#subBuildStart').addEventListener('click', () => {
+      if (CF.Sub.isCustom()) {
+        if (window.confirm('已在自由建構中——要清空重來嗎？')) CF.Sub.buildStart();
+      } else if (CF.Sub.getSheet().length === 0 || window.confirm('開始自由建構會離開目前情境。繼續？')) {
+        CF.Sub.buildStart();
+      }
+      updateSubTools();
+    });
+    document.querySelectorAll('.sub-tool').forEach(b => {
+      b.addEventListener('click', () => {
+        if (!enterSubBuild()) return;
+        const t = b.dataset.subtool || null;
+        CF.Sub.setBuildTool(CF.Sub.getBuildTool() === t ? null : t);
+        updateSubTools();
+      });
+    });
+
     // 左欄：變電所情境卡（依難度分區，可摺疊）
     const spHost = $('#subScenarios');
+    const buildCard = document.createElement('button');
+    buildCard.type = 'button';
+    buildCard.className = 'preset-card';
+    buildCard.innerHTML = '<b>🏗 自由建構（空白單線圖）</b><span>自己放電源、母線、CB／DS、變壓器、饋線，接好就能操作測試；注入故障看自動保護協調（最近 CB 主保護、上一級後備越級）。</span>';
+    buildCard.addEventListener('click', () => { $('#subBuildStart').click(); });
+    spHost.appendChild(buildCard);
     const SUB_TIERS = [
       [1, '基本功：停送電順序', false],
       [2, '雙母線／一次半斷路器', false],
