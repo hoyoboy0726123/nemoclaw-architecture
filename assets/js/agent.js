@@ -331,11 +331,11 @@
     },
     {
       name: 'sub_build',
-      description: '自由建構變電所單線圖（畫布 0–1180 × 0–560）。action=start 開空白圖；add_bus {y}；add_src {kv: "345kV"|"161kV"|"11.4kV", x, y}（放空白處，之後用 DS 接母線）；add_feeder {x, y, label, amps}；add_dev {dev_type: "cb"|"ds"|"tx", a, b}——a/b 可寫母線 id（B1）、節點 id（n3）或座標字串 "590,300"；remove {id}。新裝 CB/DS 一律開路，之後用 sub_operate 送電。故障注入用 sub_fault：主保護＝離故障點最近的閉合 CB（0.5s）、後備＝上一級（1.2s 越級），自動判定。',
+      description: '自由建構變電所單線圖（畫布 0–1180 × 0–560）。action=start 開空白圖；add_bus {y}；add_src {kv: "345kV"|"161kV"|"11.4kV", x, y}（放空白處，之後用 DS 接母線）；add_feeder {x, y, label, amps}；add_dev {dev_type: "cb"|"ds"|"tx", a, b}——a/b 可寫母線 id（B1）、節點 id（n3）或座標字串 "590,300"；add_es {a: 節點或母線 id}（接地開關：檢修掛地；帶電合地或掛地中送電＝接地短路事故）；remove {id}。新裝 CB/DS 一律開路，之後用 sub_operate 送電（接地開關也用 sub_operate 掛/拆）。故障注入用 sub_fault：主保護＝離故障點最近的閉合 CB（0.5s）、後備＝上一級（1.2s 越級），自動判定。',
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['start', 'add_bus', 'add_src', 'add_feeder', 'add_dev', 'remove'] },
+          action: { type: 'string', enum: ['start', 'add_bus', 'add_src', 'add_feeder', 'add_dev', 'add_es', 'remove'] },
           y: { type: 'number' }, x: { type: 'number' },
           kv: { type: 'string', enum: ['345kV', '161kV', '11.4kV'] },
           dev_type: { type: 'string', enum: ['cb', 'ds', 'tx'] },
@@ -353,6 +353,7 @@
         if (a.action === 'add_src') return CF.Sub.buildAdd('src', { kv: a.kv, x: a.x, y: a.y });
         if (a.action === 'add_feeder') return CF.Sub.buildAdd('feeder', { x: a.x, y: a.y, label: a.label, amps: a.amps });
         if (a.action === 'add_dev') return CF.Sub.buildAdd(a.dev_type, { a: a.a, b: a.b, label: a.label });
+        if (a.action === 'add_es') return CF.Sub.buildAdd('es', { at: a.a, x: a.x });
         if (a.action === 'remove') return CF.Sub.buildRemove(String(a.id || '').trim());
         return { ok: false, error: '未知動作' };
       }
