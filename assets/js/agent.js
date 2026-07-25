@@ -410,7 +410,8 @@
   function systemPrompt() {
     const parts = CF.PART_ORDER.filter(id => id !== 'camera').map(id => `${id}（${CF.PARTS[id].titleName}）`).join('、');
     return [
-      '你是「NemoClaw 電路實驗室」的內建助手 LAB AGENT。一律使用繁體中文，回覆精簡務實，不用 markdown 標題。',
+      '你是「NemoClaw 電路實驗室」的內建助手 LAB AGENT。一律使用繁體中文，回覆精簡務實。',
+      '對話框會渲染 Markdown：可用 **粗體**、`行內程式碼`、- 清單、1. 編號、### 小標題、``` 程式碼區塊 ```、| 表格 |（含 |---| 分隔線）。腳位對照、元件比較這類資料建議用表格；步驟用編號清單。但對話框很窄，表格請控制在 3 欄以內、內容簡短；一兩句話能講完就不要硬套格式。',
       '',
       '【可用能力，嚴格限制】',
       '開發板：esp32（ESP32 DevKit V1）、esp32cam（AI Thinker ESP32-CAM，含 OV2640 相機）、nano（Arduino Nano，無 WiFi）。',
@@ -603,9 +604,102 @@
   }
   const escT = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  /* ---- 助手回覆的 Markdown 渲染 ----
+   * 先做 HTML 轉義，之後所有標記都建立在「已轉義」的字串上——模型輸出（或使用者貼上的內容）
+   * 無法產生標籤；連結字元類別排除引號，也無法注入屬性。
+   */
+  function mdInline(src) {
+    let t = escT(src);
+    const codes = [];
+    t = t.replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return `\u0001${codes.length - 1}\u0001`; });
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    t = t.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+    t = t.replace(/(^|[\s（(【「])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    t = t.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+    t = t.replace(/(https?:\/\/[^\s<>"'）)】」，。]+)/g, u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`);
+    t = t.replace(/\u0001(\d+)\u0001/g, (m, n) => `<code class="md-code">${codes[+n]}</code>`);
+    return t;
+  }
+  function mdToHtml(src) {
+    const lines = String(src == null ? '' : src).replace(/\r/g, '').split('\n');
+    const out = [];
+    const isTableRow = s => /^\s*\|.*\|\s*$/.test(s);
+    const cells = s => s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(x => x.trim());
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // 程式碼區塊
+      const fence = line.match(/^\s*```(\w*)\s*$/);
+      if (fence) {
+        const buf = [];
+        i++;
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) buf.push(lines[i++]);
+        out.push(`<pre class="md-pre"><code>${escT(buf.join('\n'))}</code></pre>`);
+        continue;
+      }
+      // 表格（第二行為分隔線）
+      if (isTableRow(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+        const head = cells(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && isTableRow(lines[i])) rows.push(cells(lines[i++]));
+        i--;
+        out.push('<div class="md-tablewrap"><table class="md-table"><thead><tr>'
+          + head.map(c => `<th>${mdInline(c)}</th>`).join('')
+          + '</tr></thead><tbody>'
+          + rows.map(r => '<tr>' + r.map(c => `<td>${mdInline(c)}</td>`).join('') + '</tr>').join('')
+          + '</tbody></table></div>');
+        continue;
+      }
+      // 標題
+      const hd = line.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (hd) { out.push(`<div class="md-h md-h${hd[1].length}">${mdInline(hd[2])}</div>`); continue; }
+      // 分隔線
+      if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) { out.push('<hr class="md-hr">'); continue; }
+      // 引用
+      if (/^\s*>\s?/.test(line)) {
+        const buf = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+        i--;
+        out.push(`<blockquote class="md-quote">${buf.map(mdInline).join('<br>')}</blockquote>`);
+        continue;
+      }
+      // 清單（支援兩層縮排）
+      const li = line.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);
+      if (li) {
+        const ordered = /\d/.test(li[2]);
+        const items = [];
+        while (i < lines.length) {
+          const m2 = lines[i].match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);
+          if (!m2 || (/\d/.test(m2[2]) !== ordered && m2[1].length === 0)) break;
+          items.push({ depth: Math.min(1, Math.floor(m2[1].length / 2)), text: m2[3] });
+          i++;
+        }
+        i--;
+        let html = '';
+        let open = 0;
+        for (const it of items) {
+          while (open < it.depth) { html += `<${ordered ? 'ol' : 'ul'} class="md-list">`; open++; }
+          while (open > it.depth) { html += `</${ordered ? 'ol' : 'ul'}>`; open--; }
+          html += `<li>${mdInline(it.text)}</li>`;
+        }
+        while (open > 0) { html += `</${ordered ? 'ol' : 'ul'}>`; open--; }
+        out.push(`<${ordered ? 'ol' : 'ul'} class="md-list">${html}</${ordered ? 'ol' : 'ul'}>`);
+        continue;
+      }
+      // 空行／段落
+      if (!line.trim()) { out.push('<div class="md-gap"></div>'); continue; }
+      const buf = [line];
+      while (i + 1 < lines.length && lines[i + 1].trim()
+        && !/^\s*(#{1,6}\s|```|>\s?|[-*•]\s|\d+[.)]\s)/.test(lines[i + 1]) && !isTableRow(lines[i + 1])) buf.push(lines[++i]);
+      out.push(`<div class="md-p">${buf.map(mdInline).join('<br>')}</div>`);
+    }
+    return out.join('');
+  }
+
   function renderMsgDom(who, text, img) {
     const el = h('div', 'ag-msg ag-' + who);
-    el.innerHTML = escT(text).replace(/\n/g, '<br>');
+    // 助手回覆走 Markdown 渲染；使用者訊息（常含貼上的錯誤訊息）保持原樣
+    el.innerHTML = who === 'agent' ? mdToHtml(text) : escT(text).replace(/\n/g, '<br>');
     if (img) {
       const im = document.createElement('img');
       im.className = 'ag-msgimg';
